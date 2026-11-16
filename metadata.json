@@ -1,0 +1,8 @@
+{
+  "name": "Nexora AI",
+  "description": "Nexora AI is a sci-fi JARVIS-style AI character and desktop experience featuring a live 3D particle core, persistent memory, World Monitor radar, and remote voice companion.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

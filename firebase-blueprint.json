@@ -1,0 +1,384 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Private Stonic AI user profile, Generation 3 license entitlement, Stonic Cloud plan, and usage counters.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID matching document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Google account email linked to desktop activation.",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name shown in Account portal.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "avatarForm": {
+          "type": "string",
+          "description": "Selected 3D particle form.",
+          "enum": ["core", "female", "male"],
+          "maxLength": 16
+        },
+        "hasLifetime": {
+          "type": "boolean",
+          "description": "Whether Generation 3 Lifetime desktop license is active."
+        },
+        "cloudPlan": {
+          "type": "string",
+          "description": "Active Stonic Cloud engine plan.",
+          "enum": ["free-trial", "basic", "power", "byok"],
+          "maxLength": 20
+        },
+        "dailyUsed": {
+          "type": "integer",
+          "description": "Units consumed today in Stonic Cloud."
+        },
+        "monthlyUsed": {
+          "type": "integer",
+          "description": "Units consumed this billing cycle."
+        },
+        "deviceCount": {
+          "type": "integer",
+          "description": "Current count of registered Windows PC slots (0..3)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "displayName",
+        "avatarForm",
+        "hasLifetime",
+        "cloudPlan",
+        "dailyUsed",
+        "monthlyUsed",
+        "deviceCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RegisteredDevice": {
+      "title": "RegisteredDevice",
+      "description": "Windows PC slot registered under a user account (max 3 per Lifetime license).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Device slot identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "User-assigned PC name.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "os": {
+          "type": "string",
+          "description": "Operating system label.",
+          "enum": ["Windows 11 x64", "Windows 10 x64"],
+          "maxLength": 32
+        },
+        "status": {
+          "type": "string",
+          "description": "Device activation status.",
+          "enum": ["Active", "Standby"],
+          "maxLength": 16
+        },
+        "lastActive": {
+          "type": "string",
+          "description": "Human-readable last active label.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server registration timestamp."
+        }
+      },
+      "required": ["id", "ownerUid", "name", "os", "status", "lastActive", "createdAt"]
+    },
+    "CharacterMemory": {
+      "title": "CharacterMemory",
+      "description": "Persistent user memory injected into Stonic AI system prompts.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Memory document identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "text": {
+          "type": "string",
+          "description": "Memory fact remembered by the character.",
+          "minLength": 1,
+          "maxLength": 280
+        },
+        "category": {
+          "type": "string",
+          "description": "Memory category.",
+          "enum": ["identity", "preference", "context"],
+          "maxLength": 16
+        },
+        "createdDate": {
+          "type": "string",
+          "description": "ISO calendar date YYYY-MM-DD for display.",
+          "minLength": 10,
+          "maxLength": 10
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        }
+      },
+      "required": ["id", "ownerUid", "text", "category", "createdDate", "createdAt"]
+    },
+    "PurchaseReceipt": {
+      "title": "PurchaseReceipt",
+      "description": "Immutable billing/activation receipt for Lifetime or Stonic Cloud.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Order receipt identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "planId": {
+          "type": "string",
+          "description": "Purchased plan identifier.",
+          "enum": ["lifetime", "basic", "power", "trial"],
+          "maxLength": 16
+        },
+        "item": {
+          "type": "string",
+          "description": "Human-readable item label.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "amount": {
+          "type": "string",
+          "description": "Display price string.",
+          "minLength": 1,
+          "maxLength": 24
+        },
+        "method": {
+          "type": "string",
+          "description": "Payment method used.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "status": {
+          "type": "string",
+          "description": "Order status.",
+          "enum": ["Active", "Completed"],
+          "maxLength": 16
+        },
+        "orderDate": {
+          "type": "string",
+          "description": "ISO calendar date YYYY-MM-DD.",
+          "minLength": 10,
+          "maxLength": 10
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "planId",
+        "item",
+        "amount",
+        "method",
+        "status",
+        "orderDate",
+        "createdAt"
+      ]
+    },
+    "PaymentSubmission": {
+      "title": "PaymentSubmission",
+      "description": "Manual payment receipt submitted for owner review (Bank Transfer, JazzCash, USDT / Binance Pay).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Submission document identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Submitting user Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email of the submitting buyer.",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "planId": {
+          "type": "string",
+          "description": "Requested plan identifier.",
+          "enum": ["lifetime", "basic", "power"],
+          "maxLength": 16
+        },
+        "item": {
+          "type": "string",
+          "description": "Human-readable item label.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "amount": {
+          "type": "string",
+          "description": "Price string.",
+          "minLength": 1,
+          "maxLength": 24
+        },
+        "method": {
+          "type": "string",
+          "description": "Payment channel.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "referenceCode": {
+          "type": "string",
+          "description": "Transaction ID or bank transfer reference submitted by user.",
+          "minLength": 4,
+          "maxLength": 80
+        },
+        "status": {
+          "type": "string",
+          "description": "Verification workflow state.",
+          "enum": ["Pending", "Approved", "Rejected"],
+          "maxLength": 16
+        },
+        "reviewerNote": {
+          "type": "string",
+          "description": "Optional verification note from NexoraAI owner.",
+          "minLength": 0,
+          "maxLength": 240
+        },
+        "submittedDate": {
+          "type": "string",
+          "description": "ISO calendar date YYYY-MM-DD.",
+          "minLength": 10,
+          "maxLength": 10
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "ownerEmail",
+        "planId",
+        "item",
+        "amount",
+        "method",
+        "referenceCode",
+        "status",
+        "reviewerNote",
+        "submittedDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserAccount"
+      },
+      "description": "Private owner-only (and verified admin) user account document containing PII (email), license status, cloud quota counters, and atomic device slot count."
+    },
+    "/users/{userId}/devices/{deviceId}": {
+      "schema": {
+        "$ref": "#/entities/RegisteredDevice"
+      },
+      "description": "Registered Windows PC slots belonging to userId, bounded to MAX_DEVICES = 3 via atomic deviceCount updates."
+    },
+    "/users/{userId}/memories/{memoryId}": {
+      "schema": {
+        "$ref": "#/entities/CharacterMemory"
+      },
+      "description": "Persistent character memories belonging to userId."
+    },
+    "/users/{userId}/purchases/{purchaseId}": {
+      "schema": {
+        "$ref": "#/entities/PurchaseReceipt"
+      },
+      "description": "Append-only purchase and activation receipts belonging to userId."
+    },
+    "/payment_submissions/{submissionId}": {
+      "schema": {
+        "$ref": "#/entities/PaymentSubmission"
+      },
+      "description": "Manual payment verification queue reviewed by verified admin (javidtaran88@gmail.com)."
+    }
+  }
+}

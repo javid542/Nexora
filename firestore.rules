@@ -1,0 +1,345 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable validation primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedOwner(userId) {
+      return isSignedIn() && request.auth.token.email_verified == true && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && (
+          request.auth.token.email == 'javidtaran88@gmail.com'
+          || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
+    }
+
+    function isValidUserAccount(data, userId) {
+      return data.keys().hasAll([
+          'uid',
+          'email',
+          'displayName',
+          'avatarForm',
+          'hasLifetime',
+          'cloudPlan',
+          'dailyUsed',
+          'monthlyUsed',
+          'deviceCount',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'email',
+          'displayName',
+          'avatarForm',
+          'hasLifetime',
+          'cloudPlan',
+          'dailyUsed',
+          'monthlyUsed',
+          'deviceCount',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.avatarForm is string && data.avatarForm.size() <= 16
+        && data.avatarForm in ['core', 'female', 'male']
+        && data.hasLifetime is bool
+        && data.cloudPlan is string && data.cloudPlan.size() <= 20
+        && data.cloudPlan in ['free-trial', 'basic', 'power', 'byok']
+        && data.dailyUsed is int && data.dailyUsed >= 0 && data.dailyUsed <= 10000
+        && data.monthlyUsed is int && data.monthlyUsed >= 0 && data.monthlyUsed <= 100000
+        && data.deviceCount is int && data.deviceCount >= 0 && data.deviceCount <= 3
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDevice(data, deviceId) {
+      return data.keys().hasAll(['id', 'ownerUid', 'name', 'os', 'status', 'lastActive', 'createdAt'])
+        && data.keys().hasOnly(['id', 'ownerUid', 'name', 'os', 'status', 'lastActive', 'createdAt'])
+        && isValidId(data.id)
+        && data.id == deviceId
+        && isValidId(data.ownerUid)
+        && data.ownerUid == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 40
+        && data.os is string && data.os.size() >= 1 && data.os.size() <= 32
+        && data.os in ['Windows 11 x64', 'Windows 10 x64']
+        && data.status is string && data.status.size() <= 16
+        && data.status in ['Active', 'Standby']
+        && data.lastActive is string && data.lastActive.size() >= 1 && data.lastActive.size() <= 40
+        && data.createdAt is timestamp;
+    }
+
+    function isValidMemory(data, memoryId) {
+      return data.keys().hasAll(['id', 'ownerUid', 'text', 'category', 'createdDate', 'createdAt'])
+        && data.keys().hasOnly(['id', 'ownerUid', 'text', 'category', 'createdDate', 'createdAt'])
+        && isValidId(data.id)
+        && data.id == memoryId
+        && isValidId(data.ownerUid)
+        && data.ownerUid == request.auth.uid
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 280
+        && data.category is string && data.category.size() <= 16
+        && data.category in ['identity', 'preference', 'context']
+        && data.createdDate is string && data.createdDate.size() == 10
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPurchase(data, purchaseId, ownerId) {
+      return data.keys().hasAll(['id', 'ownerUid', 'planId', 'item', 'amount', 'method', 'status', 'orderDate', 'createdAt'])
+        && data.keys().hasOnly(['id', 'ownerUid', 'planId', 'item', 'amount', 'method', 'status', 'orderDate', 'createdAt'])
+        && isValidId(data.id)
+        && data.id == purchaseId
+        && isValidId(data.ownerUid)
+        && data.ownerUid == ownerId
+        && data.planId is string && data.planId.size() <= 16
+        && data.planId in ['lifetime', 'basic', 'power', 'trial']
+        && data.item is string && data.item.size() >= 1 && data.item.size() <= 80
+        && data.amount is string && data.amount.size() >= 1 && data.amount.size() <= 24
+        && data.method is string && data.method.size() >= 1 && data.method.size() <= 40
+        && data.status is string && data.status.size() <= 16
+        && data.status in ['Active', 'Completed']
+        && data.orderDate is string && data.orderDate.size() == 10
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSubmission(data, submissionId) {
+      return data.keys().hasAll([
+          'id',
+          'ownerUid',
+          'ownerEmail',
+          'planId',
+          'item',
+          'amount',
+          'method',
+          'referenceCode',
+          'status',
+          'reviewerNote',
+          'submittedDate',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'ownerUid',
+          'ownerEmail',
+          'planId',
+          'item',
+          'amount',
+          'method',
+          'referenceCode',
+          'status',
+          'reviewerNote',
+          'submittedDate',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == submissionId
+        && isValidId(data.ownerUid)
+        && data.ownerEmail is string && data.ownerEmail.size() >= 3 && data.ownerEmail.size() <= 254
+        && data.planId is string && data.planId.size() <= 16
+        && data.planId in ['lifetime', 'basic', 'power']
+        && data.item is string && data.item.size() >= 1 && data.item.size() <= 80
+        && data.amount is string && data.amount.size() >= 1 && data.amount.size() <= 24
+        && data.method is string && data.method.size() >= 1 && data.method.size() <= 40
+        && data.referenceCode is string && data.referenceCode.size() >= 4 && data.referenceCode.size() <= 80
+        && data.status is string && data.status.size() <= 16
+        && data.status in ['Pending', 'Approved', 'Rejected']
+        && data.reviewerNote is string && data.reviewerNote.size() <= 240
+        && data.submittedDate is string && data.submittedDate.size() == 10
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Owner-only (or verified admin) private user account
+    match /users/{userId} {
+      allow get: if (isVerifiedOwner(userId) || isAdmin()) && isValidId(userId);
+      allow list: if isAdmin();
+      allow create: if isVerifiedOwner(userId)
+        && isValidId(userId)
+        && isValidUserAccount(incoming(), userId)
+        && (request.auth.token.email == null || incoming().email == request.auth.token.email)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().deviceCount == 0
+        && incoming().hasLifetime == false
+        && incoming().dailyUsed == 0
+        && incoming().monthlyUsed == 0;
+      allow update: if isValidId(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            isAdmin()
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly(['hasLifetime', 'cloudPlan', 'updatedAt'])
+              || incoming().diff(existing()).affectedKeys().hasOnly(['cloudPlan', 'updatedAt'])
+            )
+          )
+          || (
+            isVerifiedOwner(userId)
+            && (request.auth.token.email == null || incoming().email == request.auth.token.email)
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly(['avatarForm', 'updatedAt'])
+              || (
+                incoming().diff(existing()).affectedKeys().hasOnly(['deviceCount', 'updatedAt'])
+                && (
+                  incoming().deviceCount == existing().deviceCount + 1
+                  || incoming().deviceCount == existing().deviceCount - 1
+                )
+              )
+              || incoming().diff(existing()).affectedKeys().hasOnly(['cloudPlan', 'updatedAt'])
+              || (
+                incoming().diff(existing()).affectedKeys().hasOnly(['hasLifetime', 'cloudPlan', 'updatedAt'])
+                && incoming().hasLifetime == true
+              )
+              || (
+                incoming().diff(existing()).affectedKeys().hasOnly(['dailyUsed', 'monthlyUsed', 'updatedAt'])
+                && incoming().dailyUsed >= existing().dailyUsed
+                && incoming().monthlyUsed >= existing().monthlyUsed
+              )
+              || incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt'])
+            )
+          )
+        );
+      allow delete: if false;
+
+      // Registered Windows PCs (max 3 enforced atomically via parent deviceCount)
+      match /devices/{deviceId} {
+        allow get: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(deviceId)
+          && existing().ownerUid == request.auth.uid;
+        allow list: if isVerifiedOwner(userId) && resource.data.ownerUid == request.auth.uid;
+        allow create: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(deviceId)
+          && isValidDevice(incoming(), deviceId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.deviceCount
+             == get(/databases/$(database)/documents/users/$(userId)).data.deviceCount + 1
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.deviceCount <= 3;
+        allow update: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(deviceId)
+          && isValidDevice(incoming(), deviceId)
+          && incoming().id == existing().id
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'lastActive']);
+        allow delete: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(deviceId)
+          && existing().ownerUid == request.auth.uid
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.deviceCount
+             == get(/databases/$(database)/documents/users/$(userId)).data.deviceCount - 1
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.deviceCount >= 0;
+      }
+
+      // Persistent character memories
+      match /memories/{memoryId} {
+        allow get: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(memoryId)
+          && existing().ownerUid == request.auth.uid;
+        allow list: if isVerifiedOwner(userId) && resource.data.ownerUid == request.auth.uid;
+        allow create: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(memoryId)
+          && isValidMemory(incoming(), memoryId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if false;
+        allow delete: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(memoryId)
+          && existing().ownerUid == request.auth.uid;
+      }
+
+      // Append-only purchase ledger (created by owner or admin approval batch)
+      match /purchases/{purchaseId} {
+        allow get: if (isVerifiedOwner(userId) || isAdmin())
+          && isValidId(userId)
+          && isValidId(purchaseId)
+          && existing().ownerUid == userId;
+        allow list: if (isVerifiedOwner(userId) || isAdmin()) && resource.data.ownerUid == userId;
+        allow create: if (isVerifiedOwner(userId) || isAdmin())
+          && isValidId(userId)
+          && isValidId(purchaseId)
+          && isValidPurchase(incoming(), purchaseId, userId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update, delete: if false;
+      }
+    }
+
+    // Manual payment receipt verification queue
+    match /payment_submissions/{submissionId} {
+      allow get: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && isValidId(submissionId)
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && (resource.data.ownerUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && isValidId(submissionId)
+        && isValidSubmission(incoming(), submissionId)
+        && incoming().ownerUid == request.auth.uid
+        && (request.auth.token.email == null || incoming().ownerEmail == request.auth.token.email)
+        && incoming().status == 'Pending'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isAdmin()
+        && isValidId(submissionId)
+        && isValidSubmission(incoming(), submissionId)
+        && existing().status == 'Pending'
+        && (incoming().status == 'Approved' || incoming().status == 'Rejected')
+        && incoming().id == existing().id
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().ownerEmail == existing().ownerEmail
+        && incoming().planId == existing().planId
+        && incoming().item == existing().item
+        && incoming().amount == existing().amount
+        && incoming().method == existing().method
+        && incoming().referenceCode == existing().referenceCode
+        && incoming().submittedDate == existing().submittedDate
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewerNote', 'updatedAt']);
+      allow delete: if false;
+    }
+  }
+}

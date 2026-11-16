@@ -1,0 +1,515 @@
+import { User } from 'firebase/auth';
+import { useEffect, useState } from 'react';
+import { CheckoutModal, CheckoutPlanType } from './components/CheckoutModal';
+import { CommandBarModal } from './components/CommandBarModal';
+import { Footer } from './components/Footer';
+import { AppRoute, Navbar } from './components/Navbar';
+import { PreSalesWidget } from './components/PreSalesWidget';
+import { ProofModal } from './components/ProofModal';
+import { playCoreChime } from './utils/audioChime';
+import {
+  AvatarForm,
+  CloudPlanId,
+  CoreMood,
+  DEFAULT_MEMORIES,
+  DeviceSlot,
+  MemoryItem,
+  PaymentSubmissionRecord,
+  PurchaseRecord,
+  Testimonial,
+} from './data/stonicData';
+import {
+  addDeviceAtomic,
+  addMemoryFirestore,
+  completePurchaseAtomic,
+  deleteMemoryFirestore,
+  ensureUserAccount,
+  incrementUserUsage,
+  reviewPaymentSubmissionAtomic,
+  revokeDeviceAtomic,
+  setUserAvatarForm,
+  setUserCloudPlan,
+  signInWithGoogle,
+  signOutUser,
+  submitPaymentVerification,
+  subscribeAllSubmissionsAdmin,
+  subscribeAllUsersAdmin,
+  subscribeUserDevices,
+  subscribeUserMemories,
+  subscribeUserProfile,
+  subscribeUserPurchases,
+  subscribeUserSubmissions,
+  UserAccountDoc,
+  watchAuthState,
+} from './lib/firebase';
+import { AccountPage } from './pages/AccountPage';
+import { AdminPage } from './pages/AdminPage';
+import { DownloadPage } from './pages/DownloadPage';
+import { GuidePage } from './pages/GuidePage';
+import { HomePage } from './pages/HomePage';
+import { PricingPage } from './pages/PricingPage';
+import { RemoteCallPage } from './pages/RemoteCallPage';
+import { SecurityAndLegalPage } from './pages/SecurityAndLegalPage';
+import {
+  isAdminEmail,
+  requiresManualVerification,
+  sanitizeMemoryInput,
+} from './utils/stonicLogic';
+
+const VISITOR_STORAGE_KEY = 'nexora_ai_visitor_v1';
+const MOOD_STORAGE_KEY = 'nexora_core_mood_v1';
+
+function parseRoute(pathname: string): AppRoute {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  if (
+    clean === '/' ||
+    clean === '/pricing' ||
+    clean === '/cloud' ||
+    clean === '/download' ||
+    clean === '/account' ||
+    clean === '/admin' ||
+    clean === '/guide' ||
+    clean === '/remote' ||
+    clean === '/security' ||
+    clean === '/terms' ||
+    clean === '/refund' ||
+    clean === '/privacy'
+  ) {
+    return clean;
+  }
+  return '/';
+}
+
+function readInitialRemoteCode(): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('code') || '';
+}
+
+function loadInitialMood(): CoreMood {
+  if (typeof window === 'undefined') return 'standby';
+  try {
+    const saved = window.localStorage.getItem(MOOD_STORAGE_KEY);
+    if (saved === 'standby' || saved === 'focus' || saved === 'briefing' || saved === 'night') {
+      return saved;
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return 'standby';
+}
+
+function loadVisitorDefaults(): { avatarForm: AvatarForm; memories: MemoryItem[] } {
+  if (typeof window === 'undefined') {
+    return { avatarForm: 'female', memories: DEFAULT_MEMORIES };
+  }
+  try {
+    const raw = window.localStorage.getItem(VISITOR_STORAGE_KEY);
+    if (!raw) return { avatarForm: 'female', memories: DEFAULT_MEMORIES };
+    const parsed = JSON.parse(raw) as { avatarForm?: AvatarForm; memories?: MemoryItem[] };
+    return {
+      avatarForm: parsed.avatarForm || 'female',
+      memories: Array.isArray(parsed.memories) ? parsed.memories : DEFAULT_MEMORIES,
+    };
+  } catch {
+    return { avatarForm: 'female', memories: DEFAULT_MEMORIES };
+  }
+}
+
+export default function App() {
+  const [route, setRoute] = useState<AppRoute>(() =>
+    typeof window !== 'undefined' ? parseRoute(window.location.pathname) : '/'
+  );
+
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [profile, setProfile] = useState<UserAccountDoc | null>(null);
+  const [devices, setDevices] = useState<DeviceSlot[]>([]);
+  const [cloudMemories, setCloudMemories] = useState<MemoryItem[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
+  const [userSubmissions, setUserSubmissions] = useState<PaymentSubmissionRecord[]>([]);
+  const [adminSubmissions, setAdminSubmissions] = useState<PaymentSubmissionRecord[]>([]);
+  const [adminUsers, setAdminUsers] = useState<UserAccountDoc[]>([]);
+
+  const [visitorState, setVisitorState] = useState(loadVisitorDefaults);
+  const [coreMood, setCoreMood] = useState<CoreMood>(loadInitialMood);
+  const [commandBarOpen, setCommandBarOpen] = useState(false);
+  const [focusDurationMin, setFocusDurationMin] = useState<25 | 50>(25);
+  const [focusSecondsLeft, setFocusSecondsLeft] = useState<number>(25 * 60);
+  const [focusRunning, setFocusRunning] = useState<boolean>(false);
+  const [remoteCodeParam, setRemoteCodeParam] = useState<string>(readInitialRemoteCode);
+  const [checkoutPlan, setCheckoutPlan] = useState<CheckoutPlanType | null>(null);
+  const [activeProof, setActiveProof] = useState<Testimonial | null>(null);
+
+  useEffect(() => {
+    const unsub = watchAuthState((user) => {
+      setAuthUser(user);
+      setAuthLoading(false);
+      if (user) {
+        void ensureUserAccount(user).catch((err) => {
+          console.error('Failed to ensure Firestore user profile:', err);
+        });
+      } else {
+        setProfile(null);
+        setDevices([]);
+        setCloudMemories([]);
+        setPurchases([]);
+        setUserSubmissions([]);
+        setAdminSubmissions([]);
+        setAdminUsers([]);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!authUser) return;
+    const uid = authUser.uid;
+    const unsubProfile = subscribeUserProfile(uid, setProfile);
+    const unsubDevices = subscribeUserDevices(uid, setDevices);
+    const unsubMemories = subscribeUserMemories(uid, setCloudMemories);
+    const unsubPurchases = subscribeUserPurchases(uid, setPurchases);
+    const unsubSubmissions = subscribeUserSubmissions(uid, setUserSubmissions);
+
+    let unsubAdminSubs: (() => void) | undefined;
+    let unsubAdminUsers: (() => void) | undefined;
+    if (isAdminEmail(authUser.email)) {
+      unsubAdminSubs = subscribeAllSubmissionsAdmin(setAdminSubmissions);
+      unsubAdminUsers = subscribeAllUsersAdmin(setAdminUsers);
+    } else {
+      setAdminSubmissions([]);
+      setAdminUsers([]);
+    }
+
+    return () => {
+      unsubProfile();
+      unsubDevices();
+      unsubMemories();
+      unsubPurchases();
+      unsubSubmissions();
+      unsubAdminSubs?.();
+      unsubAdminUsers?.();
+    };
+  }, [authUser]);
+
+  useEffect(() => {
+    if (authUser) return;
+    try {
+      window.localStorage.setItem(VISITOR_STORAGE_KEY, JSON.stringify(visitorState));
+    } catch {
+      // Ignore storage errors
+    }
+  }, [visitorState, authUser]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MOOD_STORAGE_KEY, coreMood);
+    } catch {
+      // Ignore storage errors
+    }
+  }, [coreMood]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setRoute(parseRoute(window.location.pathname));
+      setRemoteCodeParam(readInitialRemoteCode());
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isCtrlSpace = e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'Space';
+      const isCmdOrCtrlK = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k';
+      if (isCtrlSpace || isCmdOrCtrlK) {
+        e.preventDefault();
+        setCommandBarOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!focusRunning) return;
+    const timer = window.setInterval(() => {
+      setFocusSecondsLeft((prev) => {
+        if (prev <= 1) {
+          setFocusRunning(false);
+          playCoreChime('reply');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [focusRunning]);
+
+  const handleStartFocusTimer = (minutes: 25 | 50) => {
+    setFocusDurationMin(minutes);
+    setFocusSecondsLeft(minutes * 60);
+    setFocusRunning(true);
+    setCoreMood('focus');
+    playCoreChime('activate');
+  };
+
+  const handleToggleFocusPause = () => {
+    setFocusRunning((prev) => !prev);
+  };
+
+  const handleResetFocusTimer = () => {
+    setFocusRunning(false);
+    setFocusSecondsLeft(focusDurationMin * 60);
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('autostart') === '1' && route === '/') {
+        window.setTimeout(() => {
+          document.getElementById('experience')?.scrollIntoView({ behavior: 'smooth' });
+        }, 120);
+      }
+    }
+  }, [route]);
+
+  const navigate = (nextRoute: AppRoute, query = '') => {
+    const fullUrl = `${nextRoute}${query}`;
+    if (query) {
+      const code = new URLSearchParams(query).get('code') || '';
+      if (code) setRemoteCodeParam(code);
+    } else if (nextRoute !== '/remote') {
+      setRemoteCodeParam('');
+    }
+    if (nextRoute !== route || query) {
+      window.history.pushState({}, '', fullUrl);
+      setRoute(nextRoute);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const activeAvatarForm: AvatarForm = authUser
+    ? profile?.avatarForm || 'female'
+    : visitorState.avatarForm;
+
+  const activeMemories: MemoryItem[] = authUser
+    ? cloudMemories.length > 0
+      ? cloudMemories
+      : DEFAULT_MEMORIES
+    : visitorState.memories;
+
+  const handleAvatarFormChange = (form: AvatarForm) => {
+    if (authUser) {
+      void setUserAvatarForm(authUser.uid, form);
+    } else {
+      setVisitorState((prev) => ({ ...prev, avatarForm: form }));
+    }
+  };
+
+  const handleAddMemory = (text: string, category: MemoryItem['category']) => {
+    const check = sanitizeMemoryInput(text);
+    if (!check.ok) return;
+    if (authUser) {
+      void addMemoryFirestore(authUser.uid, check.text, category);
+    } else {
+      const next: MemoryItem = {
+        id: `mem-${Date.now()}`,
+        text: check.text,
+        category,
+        createdAt: new Date().toISOString().slice(0, 10),
+      };
+      setVisitorState((prev) => ({ ...prev, memories: [next, ...prev.memories] }));
+    }
+  };
+
+  const handleDeleteMemory = (id: string) => {
+    if (authUser) {
+      if (cloudMemories.some((m) => m.id === id)) {
+        void deleteMemoryFirestore(authUser.uid, id);
+      }
+    } else {
+      setVisitorState((prev) => ({
+        ...prev,
+        memories: prev.memories.filter((m) => m.id !== id),
+      }));
+    }
+  };
+
+  const handleSignInGoogle = async () => {
+    const user = await signInWithGoogle();
+    await ensureUserAccount(user);
+  };
+
+  const handleSignOut = async () => {
+    await signOutUser();
+  };
+
+  const handleUsageIncrement = () => {
+    if (authUser && profile && profile.cloudPlan !== 'byok') {
+      void incrementUserUsage(authUser.uid, 2, 2);
+    }
+  };
+
+  const handleCompletePurchase = async ({
+    plan,
+    email,
+    method,
+    referenceCode,
+  }: {
+    plan: CheckoutPlanType;
+    email: string;
+    method: string;
+    cloudPlanAfter: CloudPlanId;
+    referenceCode?: string;
+  }): Promise<{ pendingVerification?: boolean }> => {
+    if (!authUser) {
+      throw new Error('Please sign in with Google before completing purchase.');
+    }
+    await ensureUserAccount(authUser);
+    if (requiresManualVerification(method)) {
+      await submitPaymentVerification({
+        uid: authUser.uid,
+        email: authUser.email || email,
+        plan,
+        method,
+        rawReferenceCode: referenceCode || '',
+      });
+      return { pendingVerification: true };
+    }
+    await completePurchaseAtomic(authUser.uid, plan, method);
+    return { pendingVerification: false };
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-[#07080A] text-[#F4F2ED]">
+      <Navbar currentRoute={route} onNavigate={navigate} isSignedIn={Boolean(authUser)} />
+
+      <div className="flex-1">
+        {route === '/' && (
+          <HomePage
+            avatarForm={activeAvatarForm}
+            onChangeAvatarForm={handleAvatarFormChange}
+            coreMood={coreMood}
+            onChangeCoreMood={setCoreMood}
+            memories={activeMemories}
+            onAddMemory={handleAddMemory}
+            onDeleteMemory={handleDeleteMemory}
+            onUsageIncrement={handleUsageIncrement}
+            onNavigate={navigate}
+            onOpenCheckout={setCheckoutPlan}
+            onOpenProof={setActiveProof}
+            focusDurationMin={focusDurationMin}
+            focusSecondsLeft={focusSecondsLeft}
+            focusRunning={focusRunning}
+            onStartFocusTimer={handleStartFocusTimer}
+            onToggleFocusPause={handleToggleFocusPause}
+            onResetFocusTimer={handleResetFocusTimer}
+            onOpenCommandBar={() => setCommandBarOpen(true)}
+          />
+        )}
+
+        {(route === '/pricing' || route === '/cloud') && (
+          <PricingPage
+            mode={route === '/cloud' ? 'cloud' : 'pricing'}
+            onNavigate={navigate}
+            onOpenCheckout={setCheckoutPlan}
+          />
+        )}
+
+        {route === '/download' && <DownloadPage onNavigate={navigate} />}
+
+        {route === '/guide' && <GuidePage onNavigate={navigate} />}
+
+        {(route === '/security' ||
+          route === '/privacy' ||
+          route === '/terms' ||
+          route === '/refund') && (
+          <SecurityAndLegalPage route={route} onNavigate={navigate} />
+        )}
+
+        {route === '/remote' && (
+          <RemoteCallPage
+            initialCode={remoteCodeParam}
+            avatarForm={activeAvatarForm}
+            coreMood={coreMood}
+            memories={activeMemories}
+            onUsageIncrement={handleUsageIncrement}
+            onNavigate={navigate}
+          />
+        )}
+
+        {route === '/account' && (
+          <AccountPage
+            authLoading={authLoading}
+            isSignedIn={Boolean(authUser)}
+            displayName={profile?.displayName || authUser?.displayName || ''}
+            userEmail={profile?.email || authUser?.email || ''}
+            hasLifetime={Boolean(profile?.hasLifetime)}
+            cloudPlan={profile?.cloudPlan || 'free-trial'}
+            dailyUsed={profile?.dailyUsed || 0}
+            monthlyUsed={profile?.monthlyUsed || 0}
+            devices={devices}
+            purchases={purchases}
+            submissions={userSubmissions}
+            onSignInGoogle={handleSignInGoogle}
+            onSignOut={handleSignOut}
+            onRegisterDevice={async (name, os) => {
+              if (!authUser) {
+                return { ok: false, error: 'Please sign in first.' };
+              }
+              return addDeviceAtomic(authUser.uid, name, os, devices);
+            }}
+            onRevokeDevice={async (deviceId) => {
+              if (!authUser) return;
+              await revokeDeviceAtomic(authUser.uid, deviceId);
+            }}
+            onChangeCloudPlan={async (plan) => {
+              if (!authUser) return;
+              await setUserCloudPlan(authUser.uid, plan);
+            }}
+            onNavigate={navigate}
+          />
+        )}
+
+        {route === '/admin' && (
+          <AdminPage
+            authLoading={authLoading}
+            isSignedIn={Boolean(authUser)}
+            userEmail={authUser?.email || profile?.email || ''}
+            submissions={adminSubmissions}
+            users={adminUsers}
+            onSignInGoogle={handleSignInGoogle}
+            onReviewSubmission={reviewPaymentSubmissionAtomic}
+            onNavigate={navigate}
+          />
+        )}
+      </div>
+
+      <Footer onNavigate={navigate} />
+
+      {route !== '/remote' && <PreSalesWidget />}
+
+      <CheckoutModal
+        plan={checkoutPlan}
+        isSignedIn={Boolean(authUser)}
+        userEmail={authUser?.email || profile?.email || ''}
+        onSignInWithGoogle={handleSignInGoogle}
+        onClose={() => setCheckoutPlan(null)}
+        onCompletePurchase={handleCompletePurchase}
+      />
+
+      <ProofModal testimonial={activeProof} onClose={() => setActiveProof(null)} />
+
+      <CommandBarModal
+        open={commandBarOpen}
+        onClose={() => setCommandBarOpen(false)}
+        onNavigate={navigate}
+        onChangeCoreMood={setCoreMood}
+        onChangeAvatarForm={handleAvatarFormChange}
+        onStartFocusTimer={handleStartFocusTimer}
+      />
+    </div>
+  );
+}
