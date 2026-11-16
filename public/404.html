@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>NexoraAI.com — Redirecting</title>
+    <style>html,body{background:#07080A;color:#F4F2ED;margin:0;font-family:sans-serif;}</style>
+    <script>
+      (function () {
+        var loc = window.location;
+        var path = loc.pathname || '/';
+        var isGh = loc.hostname.endsWith('.github.io');
+        if (isGh) {
+          var parts = path.split('/').filter(Boolean);
+          var base = parts.length > 0 ? '/' + parts[0] + '/' : '/';
+          var subRoute = parts.length > 1 ? '/' + parts.slice(1).join('/') : '/';
+          loc.replace(loc.origin + base + '#' + subRoute + loc.search);
+        } else {
+          loc.replace(loc.origin + '/#' + path + loc.search);
+        }
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

@@ -16,6 +16,9 @@ import { AppRoute } from '../components/Navbar';
 import { ParticleAvatarCanvas } from '../components/ParticleAvatarCanvas';
 import { QrPairingCard } from '../components/QrPairingCard';
 import { WorldMonitorSection } from '../components/WorldMonitorSection';
+import HUD_FEMALE_IMG from '../assets/images/desktop_hud_female_1794588611458.jpg';
+import HUD_MALE_IMG from '../assets/images/desktop_hud_male_1794588612412.jpg';
+import REMOTE_CALL_IMG from '../assets/images/stonic_remote_call_1794588612955.jpg';
 
 interface HomePageProps {
   avatarForm: AvatarForm;
@@ -37,10 +40,6 @@ interface HomePageProps {
   onResetFocusTimer: () => void;
   onOpenCommandBar: () => void;
 }
-
-const HUD_FEMALE_IMG = '/src/assets/images/desktop_hud_female_1794588611458.jpg';
-const HUD_MALE_IMG = '/src/assets/images/desktop_hud_male_1794588612412.jpg';
-const REMOTE_CALL_IMG = '/src/assets/images/stonic_remote_call_1794588612955.jpg';
 
 export function HomePage({
   avatarForm,

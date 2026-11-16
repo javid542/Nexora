@@ -59,30 +59,50 @@ import {
 const VISITOR_STORAGE_KEY = 'nexora_ai_visitor_v1';
 const MOOD_STORAGE_KEY = 'nexora_core_mood_v1';
 
+function isGitHubPagesHost(): boolean {
+  return typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
+}
+
 function parseRoute(pathname: string): AppRoute {
-  const clean = pathname.replace(/\/+$/, '') || '/';
+  const cleanPath = pathname.split('?')[0].replace(/\/+$/, '') || '/';
   if (
-    clean === '/' ||
-    clean === '/pricing' ||
-    clean === '/cloud' ||
-    clean === '/download' ||
-    clean === '/account' ||
-    clean === '/admin' ||
-    clean === '/guide' ||
-    clean === '/remote' ||
-    clean === '/security' ||
-    clean === '/terms' ||
-    clean === '/refund' ||
-    clean === '/privacy'
+    cleanPath === '/' ||
+    cleanPath === '/pricing' ||
+    cleanPath === '/cloud' ||
+    cleanPath === '/download' ||
+    cleanPath === '/account' ||
+    cleanPath === '/admin' ||
+    cleanPath === '/guide' ||
+    cleanPath === '/remote' ||
+    cleanPath === '/security' ||
+    cleanPath === '/terms' ||
+    cleanPath === '/refund' ||
+    cleanPath === '/privacy'
   ) {
-    return clean;
+    return cleanPath;
   }
   return '/';
 }
 
+function getActiveRouteFromWindow(): AppRoute {
+  if (typeof window === 'undefined') return '/';
+  const hash = window.location.hash;
+  if (hash.startsWith('#/')) {
+    return parseRoute(hash.slice(1));
+  }
+  return parseRoute(window.location.pathname);
+}
+
 function readInitialRemoteCode(): string {
   if (typeof window === 'undefined') return '';
-  return new URLSearchParams(window.location.search).get('code') || '';
+  const searchCode = new URLSearchParams(window.location.search).get('code');
+  if (searchCode) return searchCode;
+  const hash = window.location.hash;
+  const qIdx = hash.indexOf('?');
+  if (qIdx !== -1) {
+    return new URLSearchParams(hash.slice(qIdx)).get('code') || '';
+  }
+  return '';
 }
 
 function loadInitialMood(): CoreMood {
@@ -116,9 +136,7 @@ function loadVisitorDefaults(): { avatarForm: AvatarForm; memories: MemoryItem[]
 }
 
 export default function App() {
-  const [route, setRoute] = useState<AppRoute>(() =>
-    typeof window !== 'undefined' ? parseRoute(window.location.pathname) : '/'
-  );
+  const [route, setRoute] = useState<AppRoute>(getActiveRouteFromWindow);
 
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -209,12 +227,16 @@ export default function App() {
   }, [coreMood]);
 
   useEffect(() => {
-    const onPopState = () => {
-      setRoute(parseRoute(window.location.pathname));
+    const syncRoute = () => {
+      setRoute(getActiveRouteFromWindow());
       setRemoteCodeParam(readInitialRemoteCode());
     };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    window.addEventListener('popstate', syncRoute);
+    window.addEventListener('hashchange', syncRoute);
+    return () => {
+      window.removeEventListener('popstate', syncRoute);
+      window.removeEventListener('hashchange', syncRoute);
+    };
   }, []);
 
   useEffect(() => {
@@ -282,7 +304,11 @@ export default function App() {
       setRemoteCodeParam('');
     }
     if (nextRoute !== route || query) {
-      window.history.pushState({}, '', fullUrl);
+      if (isGitHubPagesHost() || window.location.hash.startsWith('#/')) {
+        window.location.hash = `#${fullUrl}`;
+      } else {
+        window.history.pushState({}, '', fullUrl);
+      }
       setRoute(nextRoute);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
