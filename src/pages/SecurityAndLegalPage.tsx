@@ -72,10 +72,40 @@ export function SecurityAndLegalPage({ route, onNavigate }: SecurityAndLegalPage
       {route === '/security' && (
         <div className="mt-8 space-y-6">
           <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl">
-            NexoraAI.com is engineered around verifiable isolation between your Windows workstation, your microphone hardware, and external inference providers.
+            NexoraAI.com is engineered around verifiable isolation between your Windows workstation folders, your microphone hardware, and external inference providers.
           </p>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <article className="rounded-xl border border-white/[0.08] bg-[#0E1117] p-6 space-y-2.5">
+              <Lock className="h-5 w-5 text-blue-400" />
+              <h2 className="font-display text-lg font-semibold text-[#F4F2ED]">
+                Scoped Folder Allowlist
+              </h2>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                AI file operations use a deny-by-default directory allowlist. Credential stores and browser vaults stay locked Blocked while approved folders stay isolated per read-only or read-write scope.
+              </p>
+            </article>
+
+            <article className="rounded-xl border border-white/[0.08] bg-[#0E1117] p-6 space-y-2.5">
+              <ShieldCheck className="h-5 w-5 text-amber-300" />
+              <h2 className="font-display text-lg font-semibold text-[#F4F2ED]">
+                Autonomy Tiers &amp; 1-Click Kill Switch
+              </h2>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                Switch between Read &amp; Draft, Approve First, or Auto-Pilot SOP anytime. Engaging Pause PC Access immediately halts every local playbook and locks remote approvals across desktop and mobile.
+              </p>
+            </article>
+
+            <article className="rounded-xl border border-white/[0.08] bg-[#0E1117] p-6 space-y-2.5">
+              <FileText className="h-5 w-5 text-blue-400" />
+              <h2 className="font-display text-lg font-semibold text-[#F4F2ED]">
+                Verifiable Action Ledger &amp; Undo
+              </h2>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                Every staged or executed workflow records exact Windows paths, affected items, timestamps, and rollback metadata so reversible operations can be undone in one click.
+              </p>
+            </article>
+
             <article className="rounded-xl border border-white/[0.08] bg-[#0E1117] p-6 space-y-2.5">
               <MicOff className="h-5 w-5 text-blue-400" />
               <h2 className="font-display text-lg font-semibold text-[#F4F2ED]">
@@ -99,20 +129,10 @@ export function SecurityAndLegalPage({ route, onNavigate }: SecurityAndLegalPage
             <article className="rounded-xl border border-white/[0.08] bg-[#0E1117] p-6 space-y-2.5">
               <ShieldCheck className="h-5 w-5 text-blue-400" />
               <h2 className="font-display text-lg font-semibold text-[#F4F2ED]">
-                SHA-256 Verified Installers
+                SHA-256 Verified Installers &amp; Ephemeral Relay
               </h2>
               <p className="text-sm text-slate-400 leading-relaxed">
-                Every Windows x64 build ships with an inspectable PowerShell verification bootstrapper and published SHA-256 digest ({RELEASE_INFO.sha256.slice(0, 16)}…).
-              </p>
-            </article>
-
-            <article className="rounded-xl border border-white/[0.08] bg-[#0E1117] p-6 space-y-2.5">
-              <Lock className="h-5 w-5 text-blue-400" />
-              <h2 className="font-display text-lg font-semibold text-[#F4F2ED]">
-                Ephemeral 10-Minute Remote Relay
-              </h2>
-              <p className="text-sm text-slate-400 leading-relaxed">
-                Nexora Remote pairing codes (NXR-XXXX-RMT) expire automatically in memory after session end and scope WebSocket rooms strictly to paired clients.
+                Every Windows x64 build ships with a PowerShell verifier ({RELEASE_INFO.sha256.slice(0, 12)}…) and Nexora Remote pairing codes (NXR-XXXX-RMT) expire cleanly after session end.
               </p>
             </article>
           </div>

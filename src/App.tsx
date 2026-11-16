@@ -8,11 +8,18 @@ import { PreSalesWidget } from './components/PreSalesWidget';
 import { ProofModal } from './components/ProofModal';
 import { playCoreChime } from './utils/audioChime';
 import {
+  ActionLedgerEntry,
+  AutonomyTier,
   AvatarForm,
+  BUSINESS_PLAYBOOKS,
+  BusinessPlaybook,
   CloudPlanId,
   CoreMood,
+  DEFAULT_FOLDER_PERMISSIONS,
   DEFAULT_MEMORIES,
   DeviceSlot,
+  FolderPermission,
+  INITIAL_ACTION_LEDGER,
   MemoryItem,
   PaymentSubmissionRecord,
   PurchaseRecord,
@@ -54,10 +61,49 @@ import {
   isAdminEmail,
   requiresManualVerification,
   sanitizeMemoryInput,
+  stagePlaybookAction,
+  toggleFolderAllowlist,
+  transitionLedgerStatus,
 } from './utils/stonicLogic';
 
 const VISITOR_STORAGE_KEY = 'nexora_ai_visitor_v1';
 const MOOD_STORAGE_KEY = 'nexora_core_mood_v1';
+const OPERATOR_STORAGE_KEY = 'nexora_operator_state_v1';
+
+interface OperatorPersistedState {
+  pcPaused: boolean;
+  autonomyTier: AutonomyTier;
+  folders: FolderPermission[];
+  ledgerEntries: ActionLedgerEntry[];
+}
+
+function loadOperatorDefaults(): OperatorPersistedState {
+  const fallback: OperatorPersistedState = {
+    pcPaused: false,
+    autonomyTier: 'approve-first',
+    folders: DEFAULT_FOLDER_PERMISSIONS,
+    ledgerEntries: INITIAL_ACTION_LEDGER,
+  };
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(OPERATOR_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<OperatorPersistedState>;
+    return {
+      pcPaused: Boolean(parsed.pcPaused),
+      autonomyTier:
+        parsed.autonomyTier === 'read-draft' ||
+        parsed.autonomyTier === 'approve-first' ||
+        parsed.autonomyTier === 'auto-pilot'
+          ? parsed.autonomyTier
+          : fallback.autonomyTier,
+      folders: Array.isArray(parsed.folders) && parsed.folders.length > 0 ? parsed.folders : fallback.folders,
+      ledgerEntries: Array.isArray(parsed.ledgerEntries) ? parsed.ledgerEntries : fallback.ledgerEntries,
+    };
+  } catch {
+    return fallback;
+  }
+}
 
 function isGitHubPagesHost(): boolean {
   return typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
@@ -149,6 +195,7 @@ export default function App() {
   const [adminUsers, setAdminUsers] = useState<UserAccountDoc[]>([]);
 
   const [visitorState, setVisitorState] = useState(loadVisitorDefaults);
+  const [operatorState, setOperatorState] = useState<OperatorPersistedState>(loadOperatorDefaults);
   const [coreMood, setCoreMood] = useState<CoreMood>(loadInitialMood);
   const [commandBarOpen, setCommandBarOpen] = useState(false);
   const [focusDurationMin, setFocusDurationMin] = useState<25 | 50>(25);
@@ -225,6 +272,24 @@ export default function App() {
       // Ignore storage errors
     }
   }, [coreMood]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(OPERATOR_STORAGE_KEY, JSON.stringify(operatorState));
+    } catch {
+      // Ignore storage errors
+    }
+  }, [operatorState]);
+
+  useEffect(() => {
+    const onStorageSync = (e: StorageEvent) => {
+      if (e.key === OPERATOR_STORAGE_KEY) {
+        setOperatorState(loadOperatorDefaults());
+      }
+    };
+    window.addEventListener('storage', onStorageSync);
+    return () => window.removeEventListener('storage', onStorageSync);
+  }, []);
 
   useEffect(() => {
     const syncRoute = () => {
@@ -378,6 +443,112 @@ export default function App() {
     }
   };
 
+  const handleTogglePcPaused = () => {
+    setOperatorState((prev) => {
+      const nextPaused = !prev.pcPaused;
+      playCoreChime(nextPaused ? 'skill' : 'activate');
+      return { ...prev, pcPaused: nextPaused };
+    });
+  };
+
+  const handleChangeAutonomyTier = (tier: AutonomyTier) => {
+    setOperatorState((prev) => ({ ...prev, autonomyTier: tier }));
+  };
+
+  const handleToggleFolder = (folderId: string) => {
+    setOperatorState((prev) => ({
+      ...prev,
+      folders: toggleFolderAllowlist(prev.folders, folderId),
+    }));
+  };
+
+  const handleRunPlaybook = (playbook: BusinessPlaybook): { ok: boolean; reason: string } => {
+    const result = stagePlaybookAction({
+      entries: operatorState.ledgerEntries,
+      folders: operatorState.folders,
+      playbook,
+      pcPaused: operatorState.pcPaused,
+      activeTier: operatorState.autonomyTier,
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }),
+    });
+
+    if (!result.ok) {
+      return { ok: false, reason: result.reason };
+    }
+
+    playCoreChime(result.mode === 'executed' ? 'reply' : 'skill');
+    setOperatorState((prev) => ({
+      ...prev,
+      ledgerEntries: result.entries,
+    }));
+    return { ok: true, reason: result.reason };
+  };
+
+  const handleRunPlaybookById = (playbookId: string) => {
+    const found = BUSINESS_PLAYBOOKS.find((p) => p.id === playbookId);
+    if (found) {
+      handleRunPlaybook(found);
+    }
+  };
+
+  const handleApproveEntry = (entryId: string): { ok: boolean; error?: string } => {
+    const res = transitionLedgerStatus(
+      operatorState.ledgerEntries,
+      entryId,
+      'Executed',
+      operatorState.pcPaused
+    );
+    if (!res.ok) {
+      return { ok: false, error: res.error };
+    }
+    playCoreChime('reply');
+    setOperatorState((prev) => ({ ...prev, ledgerEntries: res.entries }));
+    return { ok: true };
+  };
+
+  const handleRejectEntry = (entryId: string): { ok: boolean; error?: string } => {
+    const res = transitionLedgerStatus(
+      operatorState.ledgerEntries,
+      entryId,
+      'Rejected',
+      operatorState.pcPaused
+    );
+    if (!res.ok) {
+      return { ok: false, error: res.error };
+    }
+    setOperatorState((prev) => ({ ...prev, ledgerEntries: res.entries }));
+    return { ok: true };
+  };
+
+  const handleRevertEntry = (entryId: string): { ok: boolean; error?: string } => {
+    const res = transitionLedgerStatus(
+      operatorState.ledgerEntries,
+      entryId,
+      'Reverted',
+      operatorState.pcPaused
+    );
+    if (!res.ok) {
+      return { ok: false, error: res.error };
+    }
+    playCoreChime('skill');
+    setOperatorState((prev) => ({ ...prev, ledgerEntries: res.entries }));
+    return { ok: true };
+  };
+
+  const handleResetOperatorDemo = () => {
+    setOperatorState({
+      pcPaused: false,
+      autonomyTier: 'approve-first',
+      folders: DEFAULT_FOLDER_PERMISSIONS,
+      ledgerEntries: INITIAL_ACTION_LEDGER,
+    });
+  };
+
   const handleCompletePurchase = async ({
     plan,
     email,
@@ -433,6 +604,18 @@ export default function App() {
             onToggleFocusPause={handleToggleFocusPause}
             onResetFocusTimer={handleResetFocusTimer}
             onOpenCommandBar={() => setCommandBarOpen(true)}
+            pcPaused={operatorState.pcPaused}
+            onTogglePcPaused={handleTogglePcPaused}
+            autonomyTier={operatorState.autonomyTier}
+            onChangeAutonomyTier={handleChangeAutonomyTier}
+            folders={operatorState.folders}
+            onToggleFolder={handleToggleFolder}
+            ledgerEntries={operatorState.ledgerEntries}
+            onRunPlaybook={handleRunPlaybook}
+            onApproveEntry={handleApproveEntry}
+            onRejectEntry={handleRejectEntry}
+            onRevertEntry={handleRevertEntry}
+            onResetOperatorDemo={handleResetOperatorDemo}
           />
         )}
 
@@ -463,6 +646,11 @@ export default function App() {
             memories={activeMemories}
             onUsageIncrement={handleUsageIncrement}
             onNavigate={navigate}
+            pcPaused={operatorState.pcPaused}
+            onTogglePcPaused={handleTogglePcPaused}
+            ledgerEntries={operatorState.ledgerEntries}
+            onApproveEntry={handleApproveEntry}
+            onRejectEntry={handleRejectEntry}
           />
         )}
 
@@ -535,6 +723,9 @@ export default function App() {
         onChangeCoreMood={setCoreMood}
         onChangeAvatarForm={handleAvatarFormChange}
         onStartFocusTimer={handleStartFocusTimer}
+        onRunPlaybookById={handleRunPlaybookById}
+        onTogglePcPaused={handleTogglePcPaused}
+        pcPaused={operatorState.pcPaused}
       />
     </div>
   );

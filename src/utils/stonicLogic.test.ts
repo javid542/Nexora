@@ -24,8 +24,19 @@ import {
   revokeDevice,
   sanitizeMemoryInput,
   sanitizeReceiptReference,
+  stagePlaybookAction,
+  summarizeOperatorMetrics,
+  toggleFolderAllowlist,
+  transitionLedgerStatus,
 } from './stonicLogic';
-import { FAQ_ITEMS, HEADLINES, PERSONAS } from '../data/stonicData';
+import {
+  BUSINESS_PLAYBOOKS,
+  DEFAULT_FOLDER_PERMISSIONS,
+  FAQ_ITEMS,
+  HEADLINES,
+  INITIAL_ACTION_LEDGER,
+  PERSONAS,
+} from '../data/stonicData';
 
 test('device registration enforces 3-device limit and non-empty unique names', () => {
   const initial = [
@@ -204,5 +215,89 @@ test('admin authorization and manual payment receipt sanitization enforce bounds
     assert.equal(validRef.referenceCode, 'TRX-98421-JC');
   }
 });
+
+test('business operator enforces kill switch, locked folder allowlist, autonomy tiers, and undo', () => {
+  const lockedToggled = toggleFolderAllowlist(DEFAULT_FOLDER_PERMISSIONS, 'fld-vault');
+  const vaultFolder = lockedToggled.find((f) => f.id === 'fld-vault');
+  assert.equal(vaultFolder?.enabled, false);
+
+  const invoicePb = BUSINESS_PLAYBOOKS.find((p) => p.id === 'pb-invoice-triage')!;
+  const briefPb = BUSINESS_PLAYBOOKS.find((p) => p.id === 'pb-morning-brief')!;
+
+  // 1. Kill switch blocks playbook staging cleanly
+  const pausedRes = stagePlaybookAction({
+    entries: INITIAL_ACTION_LEDGER,
+    folders: DEFAULT_FOLDER_PERMISSIONS,
+    playbook: briefPb,
+    pcPaused: true,
+    activeTier: 'auto-pilot',
+    timestamp: '10:00:00',
+  });
+  assert.equal(pausedRes.ok, false);
+  assert.equal(pausedRes.mode, 'blocked');
+
+  // 2. Disabled folder blocks playbook even when PC active
+  const foldersWithoutInvoices = toggleFolderAllowlist(DEFAULT_FOLDER_PERMISSIONS, 'fld-invoices');
+  const disabledFolderRes = stagePlaybookAction({
+    entries: INITIAL_ACTION_LEDGER,
+    folders: foldersWithoutInvoices,
+    playbook: invoicePb,
+    pcPaused: false,
+    activeTier: 'auto-pilot',
+    timestamp: '10:01:00',
+  });
+  assert.equal(disabledFolderRes.ok, false);
+
+  // 3. Approve First queues medium/low actions as Pending Approval
+  const queuedRes = stagePlaybookAction({
+    entries: INITIAL_ACTION_LEDGER,
+    folders: DEFAULT_FOLDER_PERMISSIONS,
+    playbook: invoicePb,
+    pcPaused: false,
+    activeTier: 'approve-first',
+    timestamp: '10:02:00',
+  });
+  assert.equal(queuedRes.ok, true);
+  if (queuedRes.ok) {
+    assert.equal(queuedRes.mode, 'queued');
+    assert.equal(queuedRes.entry.status, 'Pending Approval');
+
+    // Approving while kill switch paused fails safely
+    const blockedApprove = transitionLedgerStatus(queuedRes.entries, queuedRes.entry.id, 'Executed', true);
+    assert.equal(blockedApprove.ok, false);
+
+    // Approving when active transitions Pending -> Executed -> Reverted (Undo)
+    const approved = transitionLedgerStatus(queuedRes.entries, queuedRes.entry.id, 'Executed', false);
+    assert.equal(approved.ok, true);
+    if (approved.ok) {
+      assert.equal(approved.entries[0]?.status, 'Executed');
+      const reverted = transitionLedgerStatus(approved.entries, queuedRes.entry.id, 'Reverted', false);
+      assert.equal(reverted.ok, true);
+      if (reverted.ok) {
+        assert.equal(reverted.entries[0]?.status, 'Reverted');
+      }
+    }
+  }
+
+  // 4. Auto-Pilot executes low-risk playbooks directly and summarizes metrics
+  const autoRes = stagePlaybookAction({
+    entries: INITIAL_ACTION_LEDGER,
+    folders: DEFAULT_FOLDER_PERMISSIONS,
+    playbook: briefPb,
+    pcPaused: false,
+    activeTier: 'auto-pilot',
+    timestamp: '10:03:00',
+  });
+  assert.equal(autoRes.ok, true);
+  if (autoRes.ok) {
+    assert.equal(autoRes.mode, 'executed');
+    assert.equal(autoRes.entry.status, 'Executed');
+    const summary = summarizeOperatorMetrics(autoRes.entries, DEFAULT_FOLDER_PERMISSIONS);
+    assert.equal(summary.pendingCount, 1);
+    assert.equal(summary.executedCount, 2);
+    assert.equal(summary.enabledFolderCount, 4);
+  }
+});
+
 
 

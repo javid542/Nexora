@@ -1,8 +1,12 @@
 import type {
+  ActionLedgerEntry,
+  AutonomyTier,
   AvatarForm,
+  BusinessPlaybook,
   CloudPlanId,
   DeviceSlot,
   FaqItem,
+  FolderPermission,
   HeadlineItem,
   MemoryItem,
   MemoryVaultFilter,
@@ -418,4 +422,212 @@ export function sanitizeReceiptReference(
     referenceCode: cleaned.slice(0, MAX_RECEIPT_REF_LENGTH),
   };
 }
+
+export function toggleFolderAllowlist(
+  folders: FolderPermission[],
+  folderId: string
+): FolderPermission[] {
+  return folders.map((folder) => {
+    if (folder.id !== folderId) return folder;
+    if (folder.locked || folder.access === 'blocked') {
+      return { ...folder, enabled: false };
+    }
+    return { ...folder, enabled: !folder.enabled };
+  });
+}
+
+export function evaluatePlaybookExecution(params: {
+  pcPaused: boolean;
+  folder?: FolderPermission;
+  playbook: BusinessPlaybook;
+  activeTier: AutonomyTier;
+}): { allowed: boolean; mode: 'blocked' | 'queued' | 'executed'; reason: string } {
+  const { pcPaused, folder, playbook, activeTier } = params;
+
+  if (pcPaused) {
+    return {
+      allowed: false,
+      mode: 'blocked',
+      reason: 'Emergency Kill Switch is active. Resume PC access to run or stage playbooks.',
+    };
+  }
+
+  if (!folder || folder.locked || folder.access === 'blocked' || !folder.enabled) {
+    return {
+      allowed: false,
+      mode: 'blocked',
+      reason: folder
+        ? `Target folder "${folder.path}" is locked or disabled in your Scoped Folder Allowlist.`
+        : 'Target folder is not authorized in your Scoped Folder Allowlist.',
+    };
+  }
+
+  if (activeTier === 'read-draft') {
+    return {
+      allowed: true,
+      mode: 'queued',
+      reason: 'Read & Draft active: plan staged for human review without modifying workstation files.',
+    };
+  }
+
+  if (activeTier === 'approve-first') {
+    return {
+      allowed: true,
+      mode: 'queued',
+      reason: 'Approve First active: staged in your approval queue and synced to Nexora Remote.',
+    };
+  }
+
+  if (playbook.stagedAction.riskLevel === 'medium') {
+    return {
+      allowed: true,
+      mode: 'queued',
+      reason: 'Medium-risk change held for 1-click confirmation even under Auto-Pilot SOP.',
+    };
+  }
+
+  return {
+    allowed: true,
+    mode: 'executed',
+    reason: 'Executed under Auto-Pilot SOP inside whitelisted folder (1-click Undo ready).',
+  };
+}
+
+export function stagePlaybookAction(params: {
+  entries: ActionLedgerEntry[];
+  folders: FolderPermission[];
+  playbook: BusinessPlaybook;
+  pcPaused: boolean;
+  activeTier: AutonomyTier;
+  timestamp?: string;
+}):
+  | {
+      ok: true;
+      mode: 'queued' | 'executed';
+      reason: string;
+      entry: ActionLedgerEntry;
+      entries: ActionLedgerEntry[];
+    }
+  | {
+      ok: false;
+      mode: 'blocked';
+      reason: string;
+      entries: ActionLedgerEntry[];
+    } {
+  const targetFolder = params.folders.find((f) => f.id === params.playbook.targetFolderId);
+  const evaluation = evaluatePlaybookExecution({
+    pcPaused: params.pcPaused,
+    folder: targetFolder,
+    playbook: params.playbook,
+    activeTier: params.activeTier,
+  });
+
+  if (!evaluation.allowed || evaluation.mode === 'blocked') {
+    return {
+      ok: false,
+      mode: 'blocked',
+      reason: evaluation.reason,
+      entries: params.entries,
+    };
+  }
+
+  const timeLabel =
+    params.timestamp ||
+    new Date().toISOString().slice(11, 19);
+
+  const entry: ActionLedgerEntry = {
+    id: generateSafeEntityId('act'),
+    timestamp: timeLabel,
+    playbookId: params.playbook.id,
+    playbookTitle: params.playbook.title,
+    actionTitle: params.playbook.stagedAction.title,
+    targetPath: params.playbook.stagedAction.targetPath,
+    summary: evaluation.reason,
+    affectedItems: [...params.playbook.stagedAction.affectedItems],
+    autonomyTier: params.activeTier,
+    status: evaluation.mode === 'executed' ? 'Executed' : 'Pending Approval',
+    reversible: params.playbook.stagedAction.reversible,
+    rollbackHint: params.playbook.stagedAction.rollbackHint,
+  };
+
+  return {
+    ok: true,
+    mode: evaluation.mode,
+    reason: evaluation.reason,
+    entry,
+    entries: [entry, ...params.entries].slice(0, 25),
+  };
+}
+
+export function transitionLedgerStatus(
+  entries: ActionLedgerEntry[],
+  entryId: string,
+  nextStatus: 'Executed' | 'Rejected' | 'Reverted',
+  pcPaused = false
+): { ok: true; entries: ActionLedgerEntry[] } | { ok: false; entries: ActionLedgerEntry[]; error: string } {
+  const target = entries.find((e) => e.id === entryId);
+  if (!target) {
+    return { ok: false, entries, error: 'Action ledger record not found.' };
+  }
+
+  if (nextStatus === 'Executed') {
+    if (pcPaused) {
+      return {
+        ok: false,
+        entries,
+        error: 'Emergency Kill Switch is active. Resume PC access before approving actions.',
+      };
+    }
+    if (target.status !== 'Pending Approval') {
+      return { ok: false, entries, error: 'Only pending actions can be approved.' };
+    }
+  } else if (nextStatus === 'Rejected') {
+    if (target.status !== 'Pending Approval') {
+      return { ok: false, entries, error: 'Only pending actions can be rejected.' };
+    }
+  } else if (nextStatus === 'Reverted') {
+    if (target.status !== 'Executed') {
+      return { ok: false, entries, error: 'Only executed actions can be reverted.' };
+    }
+    if (!target.reversible) {
+      return { ok: false, entries, error: 'This entry is marked non-reversible.' };
+    }
+  }
+
+  return {
+    ok: true,
+    entries: entries.map((item) =>
+      item.id === entryId ? { ...item, status: nextStatus } : item
+    ),
+  };
+}
+
+export function summarizeOperatorMetrics(
+  entries: ActionLedgerEntry[],
+  folders: FolderPermission[]
+): {
+  pendingCount: number;
+  executedCount: number;
+  revertedCount: number;
+  enabledFolderCount: number;
+} {
+  let pendingCount = 0;
+  let executedCount = 0;
+  let revertedCount = 0;
+  for (const e of entries) {
+    if (e.status === 'Pending Approval') pendingCount += 1;
+    else if (e.status === 'Executed') executedCount += 1;
+    else if (e.status === 'Reverted') revertedCount += 1;
+  }
+  const enabledFolderCount = folders.filter(
+    (f) => f.enabled && !f.locked && f.access !== 'blocked'
+  ).length;
+  return {
+    pendingCount,
+    executedCount,
+    revertedCount,
+    enabledFolderCount,
+  };
+}
+
 

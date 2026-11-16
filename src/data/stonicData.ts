@@ -169,6 +169,63 @@ export interface PaymentSubmissionRecord {
   submittedDate: string;
 }
 
+export type AutonomyTier = 'read-draft' | 'approve-first' | 'auto-pilot';
+
+export interface AutonomyTierConfig {
+  id: AutonomyTier;
+  label: string;
+  shortLabel: string;
+  description: string;
+}
+
+export interface FolderPermission {
+  id: string;
+  path: string;
+  label: string;
+  scopeNote: string;
+  access: 'read-only' | 'read-write' | 'blocked';
+  locked?: boolean;
+  enabled: boolean;
+}
+
+export interface BusinessPlaybook {
+  id: string;
+  title: string;
+  department: string;
+  scheduleHint: string;
+  estimatedMinutesSaved: number;
+  requiredTier: AutonomyTier;
+  targetFolderId: string;
+  summary: string;
+  steps: string[];
+  stagedAction: {
+    title: string;
+    targetPath: string;
+    affectedItems: string[];
+    riskLevel: 'low' | 'medium';
+    reversible: boolean;
+    rollbackHint: string;
+  };
+}
+
+export type ActionLedgerStatus = 'Pending Approval' | 'Executed' | 'Rejected' | 'Reverted';
+
+export interface ActionLedgerEntry {
+  id: string;
+  timestamp: string;
+  playbookId: string;
+  playbookTitle: string;
+  actionTitle: string;
+  targetPath: string;
+  summary: string;
+  affectedItems: string[];
+  autonomyTier: AutonomyTier;
+  status: ActionLedgerStatus;
+  reversible: boolean;
+  rollbackHint: string;
+}
+
+
 export const PERSONAS: PersonaPreset[] = [
   {
     id: 'jarvis',
@@ -524,9 +581,228 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     id: 'faq-9',
     category: 'Privacy, Security & Billing',
+    question: 'How does NexoraAI protect my Windows PC when automating business folders?',
+    answer:
+      'NexoraAI enforces a deny-by-default folder allowlist, 3 explicit Autonomy Tiers (Read & Draft, Approve First, Auto-Pilot SOP), an instant Pause All PC Actions kill switch, and a reversible Action Ledger with one-click Undo.',
+  },
+  {
+    id: 'faq-10',
+    category: 'Privacy, Security & Billing',
     question: 'How do I reach NexoraAI support?',
     answer:
       'Every Lifetime and Cloud member receives priority direct support at support@nexoraai.com plus access to our member release channel.',
+  },
+];
+
+export const AUTONOMY_TIERS: AutonomyTierConfig[] = [
+  {
+    id: 'read-draft',
+    label: 'Read & Draft',
+    shortLabel: 'Tier 1 · Read & Draft',
+    description: 'Inspects whitelisted files and drafts summaries or plans without writing changes.',
+  },
+  {
+    id: 'approve-first',
+    label: 'Approve First',
+    shortLabel: 'Tier 2 · Approve First',
+    description: 'Stages every file move, invoice sort, or client reply for 1-click confirmation on PC or mobile.',
+  },
+  {
+    id: 'auto-pilot',
+    label: 'Auto-Pilot SOP',
+    shortLabel: 'Tier 3 · Auto-Pilot SOP',
+    description: 'Executes low-risk routine playbooks automatically while keeping medium-risk actions gated and every step reversible.',
+  },
+];
+
+export const DEFAULT_FOLDER_PERMISSIONS: FolderPermission[] = [
+  {
+    id: 'fld-invoices',
+    path: 'C:\\Business\\Invoices',
+    label: 'Invoices & Receipts',
+    scopeNote: 'Sort vendor PDFs, extract totals, tag quarter folders',
+    access: 'read-write',
+    enabled: true,
+  },
+  {
+    id: 'fld-proposals',
+    path: 'C:\\Work\\Proposals',
+    label: 'Client Proposals & CRM',
+    scopeNote: 'Draft follow-up memos & prepare proposal packets',
+    access: 'read-write',
+    enabled: true,
+  },
+  {
+    id: 'fld-desktop',
+    path: 'C:\\Users\\Owner\\Desktop',
+    label: 'Executive Desktop Inbox',
+    scopeNote: 'Group loose exports, screenshots & daily briefs',
+    access: 'read-write',
+    enabled: true,
+  },
+  {
+    id: 'fld-reports',
+    path: 'C:\\Business\\Reports',
+    label: 'Financial & Ops Ledgers',
+    scopeNote: 'Read-only KPI digest generation',
+    access: 'read-only',
+    enabled: true,
+  },
+  {
+    id: 'fld-vault',
+    path: 'C:\\Users\\Owner\\AppData\\Credentials',
+    label: 'Browser Passwords & Personal Keys',
+    scopeNote: 'Permanently blocked from AI access by kernel policy',
+    access: 'blocked',
+    locked: true,
+    enabled: false,
+  },
+];
+
+export const BUSINESS_PLAYBOOKS: BusinessPlaybook[] = [
+  {
+    id: 'pb-morning-brief',
+    title: '09:00 Executive Desk Brief',
+    department: 'Operations',
+    scheduleHint: 'Weekdays · 09:00',
+    estimatedMinutesSaved: 22,
+    requiredTier: 'auto-pilot',
+    targetFolderId: 'fld-reports',
+    summary: 'Scan overnight KPI exports, flag open invoices, and compile a 4-bullet morning briefing.',
+    steps: [
+      'Read overnight CSV & PDF digests inside C:\\Business\\Reports',
+      'Cross-check unpaid client balances & calendar priorities',
+      'Publish Morning_Brief_Today.md & sync voice summary to Core',
+    ],
+    stagedAction: {
+      title: 'Publish Morning_Brief_Today.md (4 priority items)',
+      targetPath: 'C:\\Business\\Reports\\Morning_Brief_Today.md',
+      affectedItems: [
+        'Digest 3 overnight revenue CSVs (+14.2% WoW)',
+        'Flag 2 overdue client retainers ($4,800 total)',
+        'Sync brief summary to Nexora Remote',
+      ],
+      riskLevel: 'low',
+      reversible: true,
+      rollbackHint: 'Removes generated brief file and restores previous digest index.',
+    },
+  },
+  {
+    id: 'pb-invoice-triage',
+    title: 'Invoice & Receipt Triage',
+    department: 'Finance',
+    scheduleHint: 'On Drop · Watch Folder',
+    estimatedMinutesSaved: 35,
+    requiredTier: 'approve-first',
+    targetFolderId: 'fld-invoices',
+    summary: 'Parse incoming vendor PDFs, normalize dates/amounts, and route them into quarterly tax folders.',
+    steps: [
+      'Scan unfiled PDFs in C:\\Business\\Invoices\\Inbox',
+      'Rename with YYYY-MM-DD_Vendor_Amount convention',
+      'Move sorted receipts into Q4-2026\\Approved and update CSV ledger',
+    ],
+    stagedAction: {
+      title: 'Sort 6 vendor receipts into Q4-2026\\Approved',
+      targetPath: 'C:\\Business\\Invoices\\Q4-2026\\Approved',
+      affectedItems: [
+        'Rename 2026-11-15_Cloudflare_240.pdf',
+        'Rename 2026-11-16_StripeFee_118.pdf (+4 more)',
+        'Append 6 normalized rows to Q4_Expense_Log.csv',
+      ],
+      riskLevel: 'medium',
+      reversible: true,
+      rollbackHint: 'Moves all 6 PDFs back to Inbox with original filenames and truncates appended CSV rows.',
+    },
+  },
+  {
+    id: 'pb-proposal-sync',
+    title: 'Client Proposal Follow-Up',
+    department: 'Sales',
+    scheduleHint: 'Daily · 16:00',
+    estimatedMinutesSaved: 28,
+    requiredTier: 'approve-first',
+    targetFolderId: 'fld-proposals',
+    summary: 'Identify proposals untouched for 72+ hours and draft tailored follow-up memos ready for approval.',
+    steps: [
+      'Audit modification timestamps in C:\\Work\\Proposals',
+      'Match stalled decks with active Client CRM memory notes',
+      'Generate 2 personalized follow-up drafts for owner review',
+    ],
+    stagedAction: {
+      title: 'Stage 2 client follow-up drafts (NordicTech & Apex)',
+      targetPath: 'C:\\Work\\Proposals\\Drafts\\FollowUps',
+      affectedItems: [
+        'NordicTech_Renewal_FollowUp.txt (Q4 scope pricing)',
+        'Apex_Logistics_Kickoff_Memo.txt (3-PC rollout plan)',
+      ],
+      riskLevel: 'medium',
+      reversible: true,
+      rollbackHint: 'Deletes staged draft text files without sending external messages.',
+    },
+  },
+  {
+    id: 'pb-desktop-hygiene',
+    title: 'Evening Workspace Hygiene',
+    department: 'Workstation',
+    scheduleHint: 'Daily · 18:30',
+    estimatedMinutesSaved: 15,
+    requiredTier: 'auto-pilot',
+    targetFolderId: 'fld-desktop',
+    summary: 'Archive loose desktop screenshots, installers, and temporary exports into dated archive folders.',
+    steps: [
+      'Identify screenshots and exports older than 24h on Desktop',
+      'Skip pinned active project shortcuts and open documents',
+      'Move 11 loose files into Desktop\\Archive\\2026-11',
+    ],
+    stagedAction: {
+      title: 'Archive 11 loose desktop files to Archive\\2026-11',
+      targetPath: 'C:\\Users\\Owner\\Desktop\\Archive\\2026-11',
+      affectedItems: [
+        'Move 7 PNG screen captures & 4 CSV exports',
+        'Preserve 5 pinned desktop project shortcuts untouched',
+      ],
+      riskLevel: 'low',
+      reversible: true,
+      rollbackHint: 'Restores all 11 archived items back to C:\\Users\\Owner\\Desktop.',
+    },
+  },
+];
+
+export const INITIAL_ACTION_LEDGER: ActionLedgerEntry[] = [
+  {
+    id: 'act-seed-pending',
+    timestamp: '09:12:04',
+    playbookId: 'pb-invoice-triage',
+    playbookTitle: 'Invoice & Receipt Triage',
+    actionTitle: 'Sort 6 vendor receipts into Q4-2026\\Approved',
+    targetPath: 'C:\\Business\\Invoices\\Q4-2026\\Approved',
+    summary: 'Staged under Approve First tier. Waiting for desktop or Nexora Remote confirmation.',
+    affectedItems: [
+      'Rename 2026-11-15_Cloudflare_240.pdf',
+      'Rename 2026-11-16_StripeFee_118.pdf (+4 more)',
+      'Append 6 normalized rows to Q4_Expense_Log.csv',
+    ],
+    autonomyTier: 'approve-first',
+    status: 'Pending Approval',
+    reversible: true,
+    rollbackHint: 'Moves all 6 PDFs back to Inbox with original filenames and truncates appended CSV rows.',
+  },
+  {
+    id: 'act-seed-exec',
+    timestamp: '09:00:11',
+    playbookId: 'pb-morning-brief',
+    playbookTitle: '09:00 Executive Desk Brief',
+    actionTitle: 'Publish Morning_Brief_Today.md (4 priority items)',
+    targetPath: 'C:\\Business\\Reports\\Morning_Brief_Today.md',
+    summary: 'Compiled KPI digest across Finance & Ops workstations and synced summary to Core.',
+    affectedItems: [
+      'Digest 3 overnight revenue CSVs (+14.2% WoW)',
+      'Flag 2 overdue client retainers ($4,800 total)',
+    ],
+    autonomyTier: 'auto-pilot',
+    status: 'Executed',
+    reversible: true,
+    rollbackHint: 'Removes generated brief file and restores previous digest index.',
   },
 ];
 
@@ -539,8 +815,8 @@ export const RELEASE_INFO = {
   sha256: '8f4c91e2b7a0d54f8392c1e6b4a7f09d2c5e8a1b3d6f709c4a2e1b8d5f3c902a',
   changelog: [
     'Introduced Reactive Core Moods (Standby, Focus, Briefing, Night) synchronized with 3D shaders',
-    'Upgraded World Monitor 3D globe & 2D command projection with live UTC hotspot pins',
-    'Accelerated Nexora Remote NXR-XXXX-RMT pairing handshake latency over cellular networks',
+    'Added Scoped Folder Allowlists, Autonomy Tiers, Emergency Kill Switch, and Action Ledger Undo',
+    'Accelerated Nexora Remote NXR-XXXX-RMT pairing handshake latency with Mobile Executive Approvals',
     'Hardened local-first microphone gating, SHA-256 verification scripts, and Urdu/Hindi cadence',
   ],
 };

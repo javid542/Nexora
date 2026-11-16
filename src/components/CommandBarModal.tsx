@@ -11,9 +11,37 @@ interface CommandBarModalProps {
   onChangeCoreMood: (mood: CoreMood) => void;
   onChangeAvatarForm: (form: AvatarForm) => void;
   onStartFocusTimer: (minutes: 25 | 50) => void;
+  onRunPlaybookById: (playbookId: string) => void;
+  onTogglePcPaused: () => void;
+  pcPaused: boolean;
 }
 
 const COMMAND_ITEMS: CommandItem[] = [
+  {
+    id: 'op-jump',
+    label: 'Open PC Business Operator & Action Ledger',
+    section: 'Navigate',
+    keywords: 'operator business folders approvals undo playbooks',
+    shortcut: '#operator',
+  },
+  {
+    id: 'op-kill-switch',
+    label: 'Toggle Emergency PC Kill Switch (Pause / Resume)',
+    section: 'Focus',
+    keywords: 'pause lock kill switch stop pc access safety',
+  },
+  {
+    id: 'pb-morning-brief',
+    label: 'Run Playbook → 09:00 Executive Desk Brief',
+    section: 'Prompt',
+    keywords: 'morning brief reports kpi playbook',
+  },
+  {
+    id: 'pb-invoice-triage',
+    label: 'Run Playbook → Invoice & Receipt Triage',
+    section: 'Prompt',
+    keywords: 'invoices receipts finance csv playbook',
+  },
   {
     id: 'mood-standby',
     label: 'Switch Core Mood → Standby Titanium',
@@ -86,9 +114,9 @@ const COMMAND_ITEMS: CommandItem[] = [
   },
   {
     id: 'nav-security',
-    label: 'Inspect Local-First Security Architecture',
+    label: 'Inspect PC Safety & Security Architecture',
     section: 'Navigate',
-    keywords: 'privacy sha256 mic gate byok',
+    keywords: 'privacy sha256 mic gate byok folders kill switch',
     shortcut: '/security',
   },
   {
@@ -100,9 +128,9 @@ const COMMAND_ITEMS: CommandItem[] = [
   },
   {
     id: 'nav-remote',
-    label: 'Open Nexora Remote Phone Relay',
+    label: 'Open Nexora Remote & Mobile Approvals',
     section: 'Navigate',
-    keywords: 'qr pairing mobile call websocket',
+    keywords: 'qr pairing mobile call approvals websocket',
     shortcut: '/remote',
   },
   {
@@ -121,6 +149,9 @@ export function CommandBarModal({
   onChangeCoreMood,
   onChangeAvatarForm,
   onStartFocusTimer,
+  onRunPlaybookById,
+  onTogglePcPaused,
+  pcPaused,
 }: CommandBarModalProps) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -146,6 +177,23 @@ export function CommandBarModal({
 
   const executeItem = (item: CommandItem) => {
     switch (item.id) {
+      case 'op-jump':
+        onNavigate('/');
+        window.setTimeout(() => {
+          document.getElementById('operator')?.scrollIntoView({ behavior: 'smooth' });
+        }, 80);
+        break;
+      case 'op-kill-switch':
+        onTogglePcPaused();
+        break;
+      case 'pb-morning-brief':
+      case 'pb-invoice-triage':
+        onRunPlaybookById(item.id);
+        onNavigate('/');
+        window.setTimeout(() => {
+          document.getElementById('operator')?.scrollIntoView({ behavior: 'smooth' });
+        }, 80);
+        break;
       case 'mood-standby':
         onChangeCoreMood('standby');
         break;
@@ -205,11 +253,13 @@ export function CommandBarModal({
 
   const sectionIcon = (section: CommandItem['section']) => {
     if (section === 'Focus') return <Timer className="h-3.5 w-3.5 text-amber-300 shrink-0" />;
-    if (section === 'Mood' || section === 'Form') {
+    if (section === 'Mood' || section === 'Form' || section === 'Prompt') {
       return <Sparkles className="h-3.5 w-3.5 text-blue-400 shrink-0" />;
     }
     return <Compass className="h-3.5 w-3.5 text-slate-400 shrink-0" />;
   };
+
+  void pcPaused;
 
   return (
     <div

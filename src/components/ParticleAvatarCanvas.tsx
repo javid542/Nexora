@@ -201,6 +201,94 @@ export function ParticleAvatarCanvas({
     const width = Math.max(container.clientWidth, 320);
     const height = Math.max(container.clientHeight, 320);
 
+    if (isSoftwareGl) {
+      const canvas2d = document.createElement('canvas');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas2d.width = Math.round(width * dpr);
+      canvas2d.height = Math.round(height * dpr);
+      canvas2d.style.display = 'block';
+      canvas2d.style.width = '100%';
+      canvas2d.style.height = '100%';
+      container.appendChild(canvas2d);
+
+      const ctx = canvas2d.getContext('2d');
+      const targets = buildTargetPositions(900);
+      const currentPos = new Float32Array(targets[formRef.current]);
+      let rafId = 0;
+      let timerId = 0;
+      let disposed = false;
+      let angle = 0.25;
+
+      const handle2dResize = () => {
+        if (!container) return;
+        const w = Math.max(container.clientWidth, 320);
+        const h = Math.max(container.clientHeight, 320);
+        canvas2d.width = Math.round(w * dpr);
+        canvas2d.height = Math.round(h * dpr);
+      };
+      window.addEventListener('resize', handle2dResize);
+
+      const render2d = () => {
+        if (disposed || !ctx) return;
+        const cw = canvas2d.width;
+        const ch = canvas2d.height;
+        const activeTarget = targets[formRef.current];
+        const moodHex = CORE_MOODS.find((m) => m.id === moodRef.current)?.accentHex || '#60A5FA';
+
+        for (let i = 0; i < currentPos.length; i++) {
+          currentPos[i] += (activeTarget[i] - currentPos[i]) * 0.25;
+        }
+
+        ctx.clearRect(0, 0, cw, ch);
+        const scale = Math.min(cw, ch) * 0.24;
+        const cx = cw / 2;
+        const cy = ch / 2;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+
+        ctx.strokeStyle = `${moodHex}44`;
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, scale * 1.9, scale * 0.62, 0.18, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, scale * 2.15, scale * 0.72, -0.22, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = moodHex;
+        for (let i = 0; i < 900; i++) {
+          const x = currentPos[i * 3];
+          const y = currentPos[i * 3 + 1];
+          const z = currentPos[i * 3 + 2];
+          const rx = x * cosA - z * sinA;
+          const rz = x * sinA + z * cosA;
+          const perspective = 4.6 / (4.6 - rz);
+          const px = cx + rx * scale * perspective;
+          const py = cy - y * scale * perspective;
+          const size = Math.max(1.1, 1.9 * perspective * dpr * 0.55);
+          ctx.globalAlpha = Math.max(0.22, Math.min(0.95, (rz + 1.8) / 3.4));
+          ctx.fillRect(px, py, size, size);
+        }
+        ctx.globalAlpha = 1;
+        angle += 0.015;
+        timerId = window.setTimeout(() => {
+          rafId = requestAnimationFrame(render2d);
+        }, 40);
+      };
+
+      render2d();
+      return () => {
+        disposed = true;
+        cancelAnimationFrame(rafId);
+        clearTimeout(timerId);
+        window.removeEventListener('resize', handle2dResize);
+        if (canvas2d.parentNode === container) {
+          container.removeChild(canvas2d);
+        }
+      };
+    }
+
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 100);
     camera.position.set(0, 0.1, 5.2);
@@ -208,8 +296,9 @@ export function ParticleAvatarCanvas({
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
-        antialias: !isSoftwareGl,
+        antialias: true,
         alpha: true,
+        preserveDrawingBuffer: true,
         powerPreference: 'high-performance',
       });
     } catch {
@@ -219,7 +308,7 @@ export function ParticleAvatarCanvas({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
-    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.width = '100%';
@@ -471,9 +560,16 @@ export function ParticleAvatarCanvas({
   if (contextLost) {
     return (
       <div
-        className={`flex items-center justify-center rounded-full bg-blue-500/10 border border-blue-400/20 ${className}`}
+        className={`relative flex items-center justify-center w-full h-full ${className}`}
+        aria-label={`Interactive ${form} core in ${mood} mode`}
       >
-        <span className="text-xs font-mono text-blue-300">Core Visual Standby</span>
+        <div className="relative h-44 w-44 rounded-full border border-blue-400/35 bg-radial from-blue-500/20 via-sky-500/5 to-transparent flex items-center justify-center">
+          <div className="h-28 w-28 rounded-full border border-sky-300/30 flex items-center justify-center">
+            <span className="text-[11px] font-mono uppercase tracking-widest text-blue-200">
+              {form} · {mood}
+            </span>
+          </div>
+        </div>
       </div>
     );
   }

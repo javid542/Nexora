@@ -1,18 +1,31 @@
 import {
   ArrowLeft,
+  CheckCircle2,
   Mic,
   MicOff,
+  PauseCircle,
   Phone,
   PhoneOff,
+  Play,
   Radio,
   Send,
+  ShieldAlert,
+  ShieldCheck,
   Volume2,
   VolumeX,
+  XCircle,
 } from 'lucide-react';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AppRoute } from '../components/Navbar';
 import { ParticleAvatarCanvas } from '../components/ParticleAvatarCanvas';
-import { AvatarForm, CoreMood, MemoryItem, PERSONAS, PersonaId } from '../data/stonicData';
+import {
+  ActionLedgerEntry,
+  AvatarForm,
+  CoreMood,
+  MemoryItem,
+  PERSONAS,
+  PersonaId,
+} from '../data/stonicData';
 import { playCoreChime } from '../utils/audioChime';
 import { formatCallDuration, isValidPairingCode, normalizePairingCode } from '../utils/stonicLogic';
 
@@ -30,6 +43,11 @@ interface RemoteCallPageProps {
   memories: MemoryItem[];
   onUsageIncrement?: () => void;
   onNavigate: (route: AppRoute) => void;
+  pcPaused: boolean;
+  onTogglePcPaused: () => void;
+  ledgerEntries: ActionLedgerEntry[];
+  onApproveEntry: (entryId: string) => { ok: boolean; error?: string };
+  onRejectEntry: (entryId: string) => { ok: boolean; error?: string };
 }
 
 const REMOTE_QUICK_PROMPTS = [
@@ -45,6 +63,11 @@ export function RemoteCallPage({
   memories,
   onUsageIncrement,
   onNavigate,
+  pcPaused,
+  onTogglePcPaused,
+  ledgerEntries,
+  onApproveEntry,
+  onRejectEntry,
 }: RemoteCallPageProps) {
   const [codeInput, setCodeInput] = useState(() =>
     initialCode ? normalizePairingCode(initialCode) : ''
@@ -287,30 +310,116 @@ export function RemoteCallPage({
     setWsStatus('disconnected');
   };
 
+  const pendingApprovals = ledgerEntries.filter((e) => e.status === 'Pending Approval');
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 overflow-x-clip">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-6">
         <div>
           <p className="text-xs font-mono uppercase tracking-widest text-blue-400">
-            Nexora Remote · Live Audio Relay
+            Nexora Remote · Mobile Voice &amp; Executive Approvals
           </p>
           <h1 className="mt-2 font-display text-3xl sm:text-4xl font-semibold tracking-tight text-white">
-            Call your character from anywhere.
+            Call your PC &amp; approve business tasks anywhere.
           </h1>
           <p className="mt-1.5 text-sm text-slate-400">
-            Pair directly over WebSocket with your Windows PC session using a 10-minute handshake code.
+            Pair over WebSocket with your Windows session to talk live, approve staged folder tasks, or trigger your emergency PC kill switch.
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onNavigate('/')}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 cursor-pointer whitespace-nowrap"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>Back to Overview</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={onTogglePcPaused}
+            aria-pressed={pcPaused}
+            className={`inline-flex min-h-[44px] items-center gap-2 rounded-lg border px-4 py-2 text-xs font-semibold cursor-pointer whitespace-nowrap ${
+              pcPaused
+                ? 'border-red-400/50 bg-red-500/20 text-red-100 hover:bg-red-500/30'
+                : 'border-amber-400/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25'
+            }`}
+          >
+            {pcPaused ? <Play className="h-3.5 w-3.5" /> : <PauseCircle className="h-3.5 w-3.5 text-amber-300" />}
+            <span>{pcPaused ? 'Resume PC Access' : 'Pause PC Access'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('/')}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 cursor-pointer whitespace-nowrap"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Back to Overview</span>
+          </button>
+        </div>
       </div>
+
+      {/* Executive Approvals Synced from PC Business Operator */}
+      <section
+        aria-label="Mobile Executive Approvals"
+        className="mt-8 rounded-xl border border-white/10 bg-[#0A0F1A] p-4 sm:p-5 space-y-4"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-base font-semibold text-[#F4F2ED]">
+              Executive PC Approvals
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Staged actions from your paired Windows workstation sync here in real time.
+            </p>
+          </div>
+          <span className="font-mono text-xs tabular-nums text-amber-300">
+            {pendingApprovals.length} pending · {pcPaused ? 'PC Lock PAUSED' : 'PC Lock Active'}
+          </span>
+        </div>
+
+        {pcPaused && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-400/35 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-200">
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            <span>Emergency Kill Switch is engaged. Remote approvals are locked until you resume PC access.</span>
+          </div>
+        )}
+
+        {pendingApprovals.length === 0 ? (
+          <div className="rounded-lg border border-white/10 bg-[#05070B] p-4 flex items-center gap-3 text-xs text-slate-300">
+            <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span>No staged PC actions awaiting confirmation right now.</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {pendingApprovals.map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded-lg border border-amber-400/30 bg-[#05070B] p-4 space-y-2.5"
+              >
+                <div className="text-[11px] font-mono text-amber-300 tabular-nums">
+                  {entry.timestamp} · {entry.playbookTitle}
+                </div>
+                <p className="text-sm font-semibold text-[#F4F2ED]">{entry.actionTitle}</p>
+                <p className="font-mono text-[11px] text-slate-400 break-all">{entry.targetPath}</p>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={pcPaused}
+                    onClick={() => onApproveEntry(entry.id)}
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md bg-[#F4F2ED] px-3.5 py-2 text-xs font-semibold text-[#07080A] hover:bg-white disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Approve &amp; Execute</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRejectEntry(entry.id)}
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md border border-white/15 bg-white/5 px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 cursor-pointer whitespace-nowrap"
+                  >
+                    <XCircle className="h-3.5 w-3.5 text-red-300" />
+                    <span>Reject</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {!activeCode ? (
         <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-12 items-stretch">

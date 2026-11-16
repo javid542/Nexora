@@ -1,14 +1,19 @@
 import { ArrowRight, Check, Download, KeyRound, Laptop, Lock, Mic, MicOff, Shield, ShieldCheck, Smartphone, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import {
+  ActionLedgerEntry,
+  AutonomyTier,
   AvatarForm,
+  BusinessPlaybook,
   CORE_MOODS,
   CoreMood,
+  FolderPermission,
   IN_APP_TESTIMONIALS,
   MemoryItem,
   SOCIAL_TESTIMONIALS,
   Testimonial,
 } from '../data/stonicData';
+import { BusinessOperatorSection } from '../components/BusinessOperatorSection';
 import { CharacterConsole } from '../components/CharacterConsole';
 import { CheckoutPlanType } from '../components/CheckoutModal';
 import { FaqSection } from '../components/FaqSection';
@@ -39,6 +44,18 @@ interface HomePageProps {
   onToggleFocusPause: () => void;
   onResetFocusTimer: () => void;
   onOpenCommandBar: () => void;
+  pcPaused: boolean;
+  onTogglePcPaused: () => void;
+  autonomyTier: AutonomyTier;
+  onChangeAutonomyTier: (tier: AutonomyTier) => void;
+  folders: FolderPermission[];
+  onToggleFolder: (folderId: string) => void;
+  ledgerEntries: ActionLedgerEntry[];
+  onRunPlaybook: (playbook: BusinessPlaybook) => { ok: boolean; reason: string };
+  onApproveEntry: (entryId: string) => { ok: boolean; error?: string };
+  onRejectEntry: (entryId: string) => { ok: boolean; error?: string };
+  onRevertEntry: (entryId: string) => { ok: boolean; error?: string };
+  onResetOperatorDemo: () => void;
 }
 
 export function HomePage({
@@ -60,6 +77,18 @@ export function HomePage({
   onToggleFocusPause,
   onResetFocusTimer,
   onOpenCommandBar,
+  pcPaused,
+  onTogglePcPaused,
+  autonomyTier,
+  onChangeAutonomyTier,
+  folders,
+  onToggleFolder,
+  ledgerEntries,
+  onRunPlaybook,
+  onApproveEntry,
+  onRejectEntry,
+  onRevertEntry,
+  onResetOperatorDemo,
 }: HomePageProps) {
   const [showcaseGender, setShowcaseGender] = useState<'female' | 'male'>('female');
   const [hudImgError, setHudImgError] = useState(false);
@@ -67,8 +96,8 @@ export function HomePage({
 
   const activeMoodCfg = CORE_MOODS.find((m) => m.id === coreMood) || CORE_MOODS[0];
 
-  const scrollToExperience = () => {
-    document.getElementById('experience')?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToOperator = () => {
+    document.getElementById('operator')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
@@ -142,25 +171,25 @@ export function HomePage({
             <p className="mt-3 text-xs text-slate-400">{activeMoodCfg.description}</p>
 
             <h1 className="mt-4 sm:mt-5 max-w-3xl font-display text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-[#F4F2ED] leading-[1.08] text-balance">
-              Your calm, spatial{' '}
+              Your AI{' '}
               <span className="bg-gradient-to-r from-blue-300 via-sky-200 to-amber-200 bg-clip-text text-transparent">
-                desktop companion
+                business assistant
               </span>{' '}
-              built for Windows.
+              safely managing your PC.
             </h1>
 
-            <p className="mt-3 sm:mt-4 max-w-xl text-sm sm:text-lg text-slate-400 leading-relaxed">
-              NexoraAI listens on push-to-talk, recalls structured memory, tracks live global radar, and bridges calls straight to your phone.
+            <p className="mt-3 sm:mt-4 max-w-2xl text-sm sm:text-lg text-slate-400 leading-relaxed">
+              Grant scoped Windows folder access to automate invoices, briefs, and daily operations—with human-in-the-loop approval, instant kill switch, and 1-click Undo across PC and phone.
             </p>
 
             <div className="mt-6 sm:mt-8 flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
-                onClick={scrollToExperience}
+                onClick={scrollToOperator}
                 className="inline-flex items-center gap-2 rounded-lg bg-[#F4F2ED] px-5 py-2.5 text-sm font-semibold text-[#07080A] transition-colors hover:bg-white cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Sparkles className="h-4 w-4" />
-                <span>Try Live Core</span>
+                <span>Test PC Operator</span>
               </button>
 
               <button
@@ -183,7 +212,7 @@ export function HomePage({
             </div>
 
             <p className="mt-4 max-w-sm sm:max-w-none text-xs text-slate-500">
-              Windows 10 / 11 x64 · Local-first mic privacy · $56 Lifetime across 3 PCs ·{' '}
+              Windows 10 / 11 x64 · Scoped folder allowlist · $56 Lifetime across 3 business PCs ·{' '}
               <button
                 type="button"
                 onClick={onOpenCommandBar}
@@ -298,6 +327,23 @@ export function HomePage({
           </div>
         </div>
       </section>
+
+      {/* 2B. PC BUSINESS OPERATOR & GOVERNANCE SANDBOX */}
+      <BusinessOperatorSection
+        pcPaused={pcPaused}
+        onTogglePcPaused={onTogglePcPaused}
+        autonomyTier={autonomyTier}
+        onChangeAutonomyTier={onChangeAutonomyTier}
+        folders={folders}
+        onToggleFolder={onToggleFolder}
+        ledgerEntries={ledgerEntries}
+        onRunPlaybook={onRunPlaybook}
+        onApproveEntry={onApproveEntry}
+        onRejectEntry={onRejectEntry}
+        onRevertEntry={onRevertEntry}
+        onResetOperatorDemo={onResetOperatorDemo}
+        onOpenRemoteApprovals={() => onNavigate('/remote')}
+      />
 
       {/* 3. INTERACTIVE CHARACTER CONSOLE (LIVE GEMINI) */}
       <CharacterConsole
@@ -519,10 +565,10 @@ export function HomePage({
             id="pricing-summary-heading"
             className="mt-2 font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[#F4F2ED]"
           >
-            Own your desk companion for life.
+            Equip up to 3 business workstations for life.
           </h2>
           <p className="mt-3 text-base text-slate-400">
-            One $56 payment covers up to 3 Windows PCs permanently. Run your own API keys (BYOK) or add managed Nexora Cloud monthly.
+            One $56 payment covers Founder Laptop, Finance Desk, and Operations PC permanently. Run your own API keys (BYOK) or add managed Nexora Cloud monthly.
           </p>
         </div>
 
@@ -541,11 +587,11 @@ export function HomePage({
               </div>
               <ul className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-300">
                 {[
-                  'All future Gen 3 desktop updates included',
+                  'All future Gen 3 desktop & playbook updates',
                   'First month of Nexora Cloud free ($19 value)',
-                  'Up to 3 active Windows PCs simultaneously',
-                  'Bring Your Own API Key (BYOK) with zero caps',
-                  'Direct email & member channel support',
+                  'Up to 3 active business Windows PCs simultaneously',
+                  'Scoped folder allowlist, kill switch & 1-click Undo',
+                  'Mobile Executive Approvals via Nexora Remote',
                   'SHA-256 verified Windows installer script',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
