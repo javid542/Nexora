@@ -8,10 +8,11 @@
       (function () {
         var loc = window.location;
         var path = loc.pathname || '/';
+        var knownRoutes = ['pricing', 'cloud', 'download', 'account', 'admin', 'guide', 'remote', 'security', 'terms', 'refund', 'privacy'];
+        var parts = path.split('/').filter(Boolean);
         var isGh = loc.hostname.endsWith('.github.io');
-        if (isGh) {
-          var parts = path.split('/').filter(Boolean);
-          var base = parts.length > 0 ? '/' + parts[0] + '/' : '/';
+        if (isGh && parts.length > 0 && knownRoutes.indexOf(parts[0]) === -1) {
+          var base = '/' + parts[0] + '/';
           var subRoute = parts.length > 1 ? '/' + parts.slice(1).join('/') : '/';
           loc.replace(loc.origin + base + '#' + subRoute + loc.search);
         } else {
