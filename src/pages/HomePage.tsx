@@ -13,7 +13,10 @@ import {
   SOCIAL_TESTIMONIALS,
   Testimonial,
 } from '../data/stonicData';
-import { BusinessOperatorSection } from '../components/BusinessOperatorSection';
+import {
+  BusinessOperatorSection,
+  LocalFolderControlProps,
+} from '../components/BusinessOperatorSection';
 import { CharacterConsole } from '../components/CharacterConsole';
 import { CheckoutPlanType } from '../components/CheckoutModal';
 import { FaqSection } from '../components/FaqSection';
@@ -52,10 +55,11 @@ interface HomePageProps {
   onToggleFolder: (folderId: string) => void;
   ledgerEntries: ActionLedgerEntry[];
   onRunPlaybook: (playbook: BusinessPlaybook) => { ok: boolean; reason: string };
-  onApproveEntry: (entryId: string) => { ok: boolean; error?: string };
-  onRejectEntry: (entryId: string) => { ok: boolean; error?: string };
-  onRevertEntry: (entryId: string) => { ok: boolean; error?: string };
+  onApproveEntry: (entryId: string) => { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
+  onRejectEntry: (entryId: string) => { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
+  onRevertEntry: (entryId: string) => { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
   onResetOperatorDemo: () => void;
+  localFolder: LocalFolderControlProps;
 }
 
 export function HomePage({
@@ -89,6 +93,7 @@ export function HomePage({
   onRejectEntry,
   onRevertEntry,
   onResetOperatorDemo,
+  localFolder,
 }: HomePageProps) {
   const [showcaseGender, setShowcaseGender] = useState<'female' | 'male'>('female');
   const [hudImgError, setHudImgError] = useState(false);
@@ -343,6 +348,7 @@ export function HomePage({
         onRevertEntry={onRevertEntry}
         onResetOperatorDemo={onResetOperatorDemo}
         onOpenRemoteApprovals={() => onNavigate('/remote')}
+        localFolder={localFolder}
       />
 
       {/* 3. INTERACTIVE CHARACTER CONSOLE (LIVE GEMINI) */}

@@ -4,9 +4,12 @@ import { CheckoutModal, CheckoutPlanType } from './components/CheckoutModal';
 import { CommandBarModal } from './components/CommandBarModal';
 import { Footer } from './components/Footer';
 import { AppRoute, Navbar } from './components/Navbar';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { PreSalesWidget } from './components/PreSalesWidget';
 import { ProofModal } from './components/ProofModal';
+import { useLocalFolderBridge } from './hooks/useLocalFolderBridge';
 import { playCoreChime } from './utils/audioChime';
+import { buildRealFolderPlan, shouldAutoExecuteRealPlan } from './utils/localFolderEngine';
 import {
   ActionLedgerEntry,
   AutonomyTier,
@@ -58,6 +61,7 @@ import { PricingPage } from './pages/PricingPage';
 import { RemoteCallPage } from './pages/RemoteCallPage';
 import { SecurityAndLegalPage } from './pages/SecurityAndLegalPage';
 import {
+  generateSafeEntityId,
   isAdminEmail,
   requiresManualVerification,
   sanitizeMemoryInput,
@@ -196,6 +200,7 @@ export default function App() {
 
   const [visitorState, setVisitorState] = useState(loadVisitorDefaults);
   const [operatorState, setOperatorState] = useState<OperatorPersistedState>(loadOperatorDefaults);
+  const localFolderBridge = useLocalFolderBridge();
   const [coreMood, setCoreMood] = useState<CoreMood>(loadInitialMood);
   const [commandBarOpen, setCommandBarOpen] = useState(false);
   const [focusDurationMin, setFocusDurationMin] = useState<25 | 50>(25);
@@ -375,7 +380,13 @@ export default function App() {
         window.history.pushState({}, '', fullUrl);
       }
       setRoute(nextRoute);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (query.includes('section=operator')) {
+        window.setTimeout(() => {
+          document.getElementById('operator')?.scrollIntoView({ behavior: 'smooth' });
+        }, 80);
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -463,6 +474,95 @@ export default function App() {
   };
 
   const handleRunPlaybook = (playbook: BusinessPlaybook): { ok: boolean; reason: string } => {
+    if (localFolderBridge.isConnected) {
+      if (operatorState.pcPaused) {
+        return {
+          ok: false,
+          reason: 'Emergency Kill Switch is active. Resume PC access to run or stage playbooks.',
+        };
+      }
+      const plan = buildRealFolderPlan({
+        playbook,
+        folderName: localFolderBridge.folderName,
+        files: localFolderBridge.files,
+        snippetPreviews: localFolderBridge.snippetPreviews,
+      });
+      const entryId = generateSafeEntityId('act');
+      const timestamp = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+      const autoExecute = shouldAutoExecuteRealPlan(operatorState.autonomyTier, plan);
+
+      if (autoExecute) {
+        localFolderBridge.registerRealPlan(entryId, plan, 'pending');
+        const newEntry: ActionLedgerEntry = {
+          id: entryId,
+          timestamp,
+          playbookId: playbook.id,
+          playbookTitle: playbook.title,
+          actionTitle: plan.actionTitle,
+          targetPath: plan.targetPath,
+          summary: `Executing directly in connected folder "${localFolderBridge.folderName}"...`,
+          affectedItems: plan.affectedItems,
+          autonomyTier: operatorState.autonomyTier,
+          status: 'Pending Approval',
+          reversible: true,
+          rollbackHint: plan.rollbackHint,
+          executionScope: 'local-folder',
+        };
+        setOperatorState((prev) => ({
+          ...prev,
+          ledgerEntries: [newEntry, ...prev.ledgerEntries].slice(0, 25),
+        }));
+        void localFolderBridge.executeRealPlanEntry(entryId).then((res) => {
+          if (res.ok) {
+            playCoreChime('reply');
+            setOperatorState((prev) => {
+              const promoted = transitionLedgerStatus(prev.ledgerEntries, entryId, 'Executed', false);
+              return promoted.ok ? { ...prev, ledgerEntries: promoted.entries } : prev;
+            });
+          }
+        });
+        return {
+          ok: true,
+          reason: `Auto-Pilot running on connected folder "${localFolderBridge.folderName}" with rollback snapshot.`,
+        };
+      }
+
+      const reason =
+        operatorState.autonomyTier === 'read-draft'
+          ? `Read & Draft scanned "${localFolderBridge.folderName}" and staged a zero-write plan.`
+          : operatorState.autonomyTier === 'auto-pilot'
+            ? `Medium-risk folder plan for "${localFolderBridge.folderName}" held for 1-click confirmation.`
+            : `Scanned "${localFolderBridge.folderName}" and staged real file plan in Approval Queue.`;
+
+      localFolderBridge.registerRealPlan(entryId, plan, 'pending');
+      const stagedEntry: ActionLedgerEntry = {
+        id: entryId,
+        timestamp,
+        playbookId: playbook.id,
+        playbookTitle: playbook.title,
+        actionTitle: plan.actionTitle,
+        targetPath: plan.targetPath,
+        summary: reason,
+        affectedItems: plan.affectedItems,
+        autonomyTier: operatorState.autonomyTier,
+        status: 'Pending Approval',
+        reversible: true,
+        rollbackHint: plan.rollbackHint,
+        executionScope: 'local-folder',
+      };
+      playCoreChime('skill');
+      setOperatorState((prev) => ({
+        ...prev,
+        ledgerEntries: [stagedEntry, ...prev.ledgerEntries].slice(0, 25),
+      }));
+      return { ok: true, reason };
+    }
+
     const result = stagePlaybookAction({
       entries: operatorState.ledgerEntries,
       folders: operatorState.folders,
@@ -496,7 +596,20 @@ export default function App() {
     }
   };
 
-  const handleApproveEntry = (entryId: string): { ok: boolean; error?: string } => {
+  const handleApproveEntry = async (entryId: string): Promise<{ ok: boolean; error?: string }> => {
+    if (operatorState.pcPaused) {
+      return {
+        ok: false,
+        error: 'Emergency Kill Switch is active. Resume PC access before approving actions.',
+      };
+    }
+    const entry = operatorState.ledgerEntries.find((e) => e.id === entryId);
+    if (entry?.executionScope === 'local-folder') {
+      const diskRes = await localFolderBridge.executeRealPlanEntry(entryId);
+      if (!diskRes.ok) {
+        return { ok: false, error: diskRes.error };
+      }
+    }
     const res = transitionLedgerStatus(
       operatorState.ledgerEntries,
       entryId,
@@ -511,7 +624,8 @@ export default function App() {
     return { ok: true };
   };
 
-  const handleRejectEntry = (entryId: string): { ok: boolean; error?: string } => {
+  const handleRejectEntry = async (entryId: string): Promise<{ ok: boolean; error?: string }> => {
+    localFolderBridge.markRealPlanRejected(entryId);
     const res = transitionLedgerStatus(
       operatorState.ledgerEntries,
       entryId,
@@ -525,7 +639,14 @@ export default function App() {
     return { ok: true };
   };
 
-  const handleRevertEntry = (entryId: string): { ok: boolean; error?: string } => {
+  const handleRevertEntry = async (entryId: string): Promise<{ ok: boolean; error?: string }> => {
+    const entry = operatorState.ledgerEntries.find((e) => e.id === entryId);
+    if (entry?.executionScope === 'local-folder') {
+      const diskRes = await localFolderBridge.revertRealPlanEntry(entryId);
+      if (!diskRes.ok) {
+        return { ok: false, error: diskRes.error };
+      }
+    }
     const res = transitionLedgerStatus(
       operatorState.ledgerEntries,
       entryId,
@@ -616,6 +737,19 @@ export default function App() {
             onRejectEntry={handleRejectEntry}
             onRevertEntry={handleRevertEntry}
             onResetOperatorDemo={handleResetOperatorDemo}
+            localFolder={{
+              supported: localFolderBridge.supported,
+              isConnected: localFolderBridge.isConnected,
+              folderName: localFolderBridge.folderName,
+              files: localFolderBridge.files,
+              busy: localFolderBridge.busy,
+              errorMessage: localFolderBridge.errorMessage,
+              lastScannedAt: localFolderBridge.lastScannedAt,
+              onConnect: localFolderBridge.connectFolder,
+              onDisconnect: localFolderBridge.disconnectFolder,
+              onRescan: localFolderBridge.refreshFolder,
+              onSeedSampleFiles: localFolderBridge.seedSampleFiles,
+            }}
           />
         )}
 
@@ -727,6 +861,8 @@ export default function App() {
         onTogglePcPaused={handleTogglePcPaused}
         pcPaused={operatorState.pcPaused}
       />
+
+      <OfflineIndicator />
     </div>
   );
 }

@@ -46,8 +46,8 @@ interface RemoteCallPageProps {
   pcPaused: boolean;
   onTogglePcPaused: () => void;
   ledgerEntries: ActionLedgerEntry[];
-  onApproveEntry: (entryId: string) => { ok: boolean; error?: string };
-  onRejectEntry: (entryId: string) => { ok: boolean; error?: string };
+  onApproveEntry: (entryId: string) => { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
+  onRejectEntry: (entryId: string) => { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
 }
 
 const REMOTE_QUICK_PROMPTS = [

@@ -223,6 +223,7 @@ export interface ActionLedgerEntry {
   status: ActionLedgerStatus;
   reversible: boolean;
   rollbackHint: string;
+  executionScope?: 'sandbox' | 'local-folder';
 }
 
 

@@ -1,10 +1,11 @@
-import { Check, Copy, Download, FileCode2, Info, Monitor, Terminal } from 'lucide-react';
+import { Check, Copy, Download, FileCode2, FolderCheck, Info, Monitor, ShieldCheck, Terminal } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { AppRoute } from '../components/Navbar';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 import { RELEASE_INFO } from '../data/stonicData';
 
 interface DownloadPageProps {
-  onNavigate: (route: AppRoute) => void;
+  onNavigate: (route: AppRoute, query?: string) => void;
 }
 
 interface ReleaseManifest {
@@ -58,17 +59,85 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
     <main className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
       <div className="text-center max-w-2xl mx-auto">
         <p className="text-xs font-mono uppercase tracking-widest text-blue-400">
-          Official Release · {manifest.generation}
+          Desktop App &amp; Release · {manifest.generation}
         </p>
         <h1 className="mt-3 font-display text-4xl sm:text-5xl font-semibold tracking-tight text-[#F4F2ED] text-balance">
-          Download NexoraAI for Windows
+          Install NexoraAI on Windows
         </h1>
         <p className="mt-3 text-base text-slate-400">
-          Verified Generation 3 desktop installer for Windows 10 and 11 (x64).
+          Install directly as a standalone Windows Desktop App (Chrome or Edge PWA) to test real folder automation with instant Undo today.
         </p>
       </div>
 
-      {/* OS Selector */}
+      {/* Ready Now: Installable Desktop App (PWA) + Real Local Folder Bridge */}
+      <section
+        aria-labelledby="pwa-desktop-install-heading"
+        className="mt-10 rounded-xl border border-blue-400/30 bg-[#0A0F1A] p-6 sm:p-8 max-w-2xl mx-auto space-y-5"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/10 pb-5">
+          <div>
+            <p className="text-xs font-mono text-emerald-300">
+              Available Immediately · Windows 10 / 11 Chrome &amp; Edge
+            </p>
+            <h2
+              id="pwa-desktop-install-heading"
+              className="mt-1 font-display text-xl font-semibold text-[#F4F2ED]"
+            >
+              Desktop Web App + Real Local Folder Access
+            </h2>
+            <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+              Installs onto your Windows Start Menu and Desktop without unsigned script warnings, with browser-sandboxed read/write folder access.
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            <PWAInstallButton
+              variant="primary"
+              showManualDesktopFallback
+              showInstalledConfirmation
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div className="rounded-lg border border-white/10 bg-[#05070B] p-4 space-y-1.5">
+            <Monitor className="h-4 w-4 text-blue-400" />
+            <p className="font-semibold text-[#F4F2ED]">1. Install App Window</p>
+            <p className="text-slate-400 leading-relaxed">
+              Click Install Desktop App above in Chrome or Edge to launch standalone.
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-[#05070B] p-4 space-y-1.5">
+            <FolderCheck className="h-4 w-4 text-blue-400" />
+            <p className="font-semibold text-[#F4F2ED]">2. Connect Test Folder</p>
+            <p className="text-slate-400 leading-relaxed">
+              Pick one Windows folder inside PC Operator to grant scoped permissions.
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-[#05070B] p-4 space-y-1.5">
+            <ShieldCheck className="h-4 w-4 text-blue-400" />
+            <p className="font-semibold text-[#F4F2ED]">3. Approve &amp; Undo</p>
+            <p className="text-slate-400 leading-relaxed">
+              Run real playbooks on disk and restore exact original files anytime.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <p className="text-xs text-slate-400">
+            Works offline for cached views and keeps local rollback snapshots on disk edits.
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate('/', '?section=operator')}
+            className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-medium text-[#F4F2ED] hover:bg-white/10 transition-colors cursor-pointer whitespace-nowrap"
+          >
+            Open PC Operator →
+          </button>
+        </div>
+      </section>
+
+      {/* OS Selector for Native Verification Channel */}
       <div className="mt-10 flex justify-center">
         <div
           role="group"
@@ -82,7 +151,7 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
               os === 'windows' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Windows 10 / 11
+            Windows Verifier (.ps1)
           </button>
           <button
             type="button"
@@ -96,16 +165,15 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
         </div>
       </div>
 
-      {/* Installer Card */}
-      <div className="mt-8 rounded-xl border border-white/10 bg-[#0A0F1A] p-6 sm:p-8 max-w-2xl mx-auto">
+      {/* Native Verification Script Card */}
+      <div className="mt-6 rounded-xl border border-white/10 bg-[#0A0F1A] p-6 sm:p-8 max-w-2xl mx-auto">
         {os === 'windows' ? (
           <div className="space-y-6">
             <div className="flex items-start gap-3 rounded-lg border border-blue-400/20 bg-blue-500/10 p-4 text-xs text-slate-300">
               <Info className="h-4 w-4 text-blue-400 mt-0.5 shrink-0" />
               <p>
-                <strong className="text-white">Recommended Browser:</strong> Safari may block large{' '}
-                <code className="font-mono text-blue-200">.exe</code> downloads. For smoothest delivery, download in{' '}
-                <strong className="text-white">Google Chrome</strong> or Microsoft Edge.
+                <strong className="text-white">Verification Bootstrapper Channel:</strong> This downloads the inspectable PowerShell SHA-256 verifier ({manifest.bootstrapperFilename}). The standalone compiled{' '}
+                <code className="font-mono text-blue-200">.exe</code> binary channel is queued behind the Desktop PWA rollout above.
               </p>
             </div>
 
@@ -116,10 +184,10 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
                 </div>
                 <div>
                   <h2 className="font-display text-lg font-semibold text-white">
-                    {manifest.installerFilename}
+                    {manifest.bootstrapperFilename}
                   </h2>
                   <p className="text-xs font-mono text-slate-400 tabular-nums">
-                    {manifest.size} · Version {manifest.version} · {manifest.platform}
+                    Target {manifest.installerFilename} ({manifest.size}) · Version {manifest.version} · {manifest.platform}
                   </p>
                 </div>
               </div>
@@ -128,7 +196,7 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
                 href={manifest.bootstrapperUrl}
                 download={manifest.bootstrapperFilename}
                 onClick={() => setDownloadStarted(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-blue-100 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Download className="h-4 w-4" />
                 <span>Download Setup Script</span>
@@ -142,8 +210,8 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
                   Setup Verification Bootstrapper Downloaded ({manifest.bootstrapperFilename})
                 </p>
                 <p className="text-slate-300 leading-relaxed">
-                  Run the downloaded PowerShell script to verify the SHA-256 signature of{' '}
-                  <span className="font-mono text-white">{manifest.installerFilename}</span>, then sign in with Google using the same account activated in your{' '}
+                  Inspect this PowerShell script anytime to audit how NexoraAI validates{' '}
+                  <span className="font-mono text-white">{manifest.installerFilename}</span> signatures before launch, and bind up to 3 Windows PCs in your{' '}
                   <button
                     type="button"
                     onClick={() => onNavigate('/account')}
