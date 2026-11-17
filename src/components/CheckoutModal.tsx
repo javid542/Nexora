@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { CloudPlanId } from '../data/stonicData';
 import {
   buildPurchaseSummary,
+  formatFirebaseAuthError,
   MAX_RECEIPT_REF_LENGTH,
   requiresManualVerification,
   sanitizeReceiptReference,
@@ -89,8 +90,8 @@ export function CheckoutModal({
     try {
       await onSignInWithGoogle();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Google sign-in was interrupted.';
-      setErrorMsg(msg);
+      const host = typeof window !== 'undefined' ? window.location.hostname : '';
+      setErrorMsg(formatFirebaseAuthError(err, host));
     } finally {
       setSigningIn(false);
     }

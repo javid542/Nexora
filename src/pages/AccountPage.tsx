@@ -9,6 +9,7 @@ import {
 import {
   calculateCloudUsage,
   canActivateDevice,
+  formatFirebaseAuthError,
   isAdminEmail,
   MAX_DEVICE_NAME_LENGTH,
   MAX_DEVICES,
@@ -73,9 +74,8 @@ export function AccountPage({
     try {
       await onSignInGoogle();
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'Unable to complete Google sign-in.';
-      setAuthError(msg);
+      const host = typeof window !== 'undefined' ? window.location.hostname : '';
+      setAuthError(formatFirebaseAuthError(err, host));
     } finally {
       setSigningIn(false);
     }

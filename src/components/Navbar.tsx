@@ -38,7 +38,7 @@ export function Navbar({ currentRoute, onNavigate, isSignedIn }: NavbarProps) {
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-white/[0.08] bg-[#07080A]/95">
+    <header className="sticky top-0 z-40 w-full border-b border-white/[0.08] bg-[#07080A]/95 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-8 px-4 py-3.5 sm:px-6">
         {/* Zone 1: Single-line Brand Wordmark */}
         <a

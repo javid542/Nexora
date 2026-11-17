@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildBootstrapperScript,
   buildCharacterSystemPrompt,
+  buildChecksumFileContent,
   buildPurchaseSummary,
   calculateCloudUsage,
   calculateCostComparison,
@@ -12,6 +13,7 @@ import {
   filterHeadlines,
   filterMemoriesByVault,
   formatCallDuration,
+  formatFirebaseAuthError,
   generateSafeEntityId,
   isAdminEmail,
   isValidEntityId,
@@ -150,6 +152,9 @@ test('remote pairing code validation, call timer, and bootstrapper script builde
   assert.match(script, /abc123def456/);
   assert.match(script, /https:\/\/nexoraai\.com/);
   assert.match(script, /\$PortalUrl\/account/);
+
+  const shaContent = buildChecksumFileContent('ABC123DEF456', 'NexoraAI-Setup-3.1.21.exe');
+  assert.equal(shaContent, 'abc123def456 *NexoraAI-Setup-3.1.21.exe\n');
 });
 
 test('filterMemoriesByVault filters disabled categories cleanly', () => {
@@ -299,5 +304,25 @@ test('business operator enforces kill switch, locked folder allowlist, autonomy 
   }
 });
 
+test('formatFirebaseAuthError gives actionable domain allowlist guidance for auth/unauthorized-domain', () => {
+  const unauthWithHost = formatFirebaseAuthError(
+    { code: 'auth/unauthorized-domain', message: 'Firebase: Error (auth/unauthorized-domain).' },
+    'myuser.github.io'
+  );
+  assert.match(unauthWithHost, /myuser\.github\.io/);
+  assert.match(unauthWithHost, /consummate-abbey-t07pf/);
+  assert.match(unauthWithHost, /Authorized domains/);
 
+  const unauthFromMsg = formatFirebaseAuthError(
+    new Error('Firebase: Error (auth/unauthorized-domain).'),
+    ''
+  );
+  assert.match(unauthFromMsg, /Authorized domains/);
+
+  const popupBlocked = formatFirebaseAuthError({ code: 'auth/popup-blocked' }, 'localhost');
+  assert.match(popupBlocked, /popup was blocked/i);
+
+  const generic = formatFirebaseAuthError(new Error('Custom failure'), 'localhost');
+  assert.equal(generic, 'Custom failure');
+});
 

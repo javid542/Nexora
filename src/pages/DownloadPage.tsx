@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { AppRoute } from '../components/Navbar';
 import { PWAInstallButton } from '../components/PWAInstallButton';
 import { RELEASE_INFO } from '../data/stonicData';
+import { buildBootstrapperScript, buildChecksumFileContent } from '../utils/stonicLogic';
 
 interface DownloadPageProps {
   onNavigate: (route: AppRoute, query?: string) => void;
@@ -37,6 +38,9 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
   });
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io')) {
+      return;
+    }
     void fetch('/api/download/manifest')
       .then((res) => (res.ok ? res.json() : null))
       .then((data: ReleaseManifest | null) => {
@@ -44,6 +48,36 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
       })
       .catch(() => {});
   }, []);
+
+  const triggerTextDownload = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
+  const handleDownloadBootstrapper = () => {
+    const appUrl =
+      typeof window !== 'undefined' ? window.location.origin : 'https://nexoraai.com';
+    const script = buildBootstrapperScript({
+      version: manifest.version,
+      sha256: manifest.sha256,
+      appUrl,
+    });
+    triggerTextDownload(manifest.bootstrapperFilename, script);
+    setDownloadStarted(true);
+  };
+
+  const handleDownloadChecksum = () => {
+    const content = buildChecksumFileContent(manifest.sha256, manifest.installerFilename);
+    triggerTextDownload(manifest.checksumFilename, content);
+  };
 
   const handleCopyChecksum = async () => {
     try {
@@ -192,15 +226,14 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
                 </div>
               </div>
 
-              <a
-                href={manifest.bootstrapperUrl}
-                download={manifest.bootstrapperFilename}
-                onClick={() => setDownloadStarted(true)}
+              <button
+                type="button"
+                onClick={handleDownloadBootstrapper}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Download className="h-4 w-4" />
                 <span>Download Setup Script</span>
-              </a>
+              </button>
             </div>
 
             {downloadStarted && (
@@ -232,14 +265,14 @@ export function DownloadPage({ onNavigate }: DownloadPageProps) {
                   SHA-256 Checksum
                 </span>
                 <div className="flex items-center gap-3">
-                  <a
-                    href={manifest.checksumUrl}
-                    download={manifest.checksumFilename}
+                  <button
+                    type="button"
+                    onClick={handleDownloadChecksum}
                     className="inline-flex items-center gap-1 text-xs text-slate-300 hover:text-white cursor-pointer"
                   >
                     <FileCode2 className="h-3.5 w-3.5 text-blue-400" />
                     <span>.sha256 file</span>
-                  </a>
+                  </button>
                   <button
                     type="button"
                     onClick={handleCopyChecksum}

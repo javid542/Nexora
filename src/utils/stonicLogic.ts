@@ -320,6 +320,12 @@ export function buildBootstrapperScript(params: {
   ].join('\n');
 }
 
+export function buildChecksumFileContent(sha256: string, installerFilename: string): string {
+  const safeHash = sha256.replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+  const safeName = installerFilename.replace(/[^0-9A-Za-z._-]/g, '');
+  return `${safeHash} *${safeName}\n`;
+}
+
 export interface CostComparisonInput {
   dailyTurns: number;
   months: number;
@@ -630,4 +636,42 @@ export function summarizeOperatorMetrics(
   };
 }
 
+export function formatFirebaseAuthError(
+  error: unknown,
+  hostname?: string,
+  projectId = 'consummate-abbey-t07pf'
+): string {
+  const code =
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof (error as { code?: unknown }).code === 'string'
+      ? (error as { code: string }).code
+      : '';
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
 
+  if (code === 'auth/unauthorized-domain' || message.includes('auth/unauthorized-domain')) {
+    const cleanHost = (hostname || '').trim();
+    const hostLabel = cleanHost ? `"${cleanHost}"` : 'your current hostname';
+    return `Domain ${hostLabel} is not authorized for Google Sign-In. Add ${cleanHost || 'this hostname'} (host only, without https://) in Firebase Console → project "${projectId}" → Authentication → Settings → Authorized domains, then retry.`;
+  }
+
+  if (code === 'auth/popup-blocked' || message.includes('auth/popup-blocked')) {
+    return 'Google Sign-In popup was blocked by your browser. Allow popups for this site and try again.';
+  }
+
+  if (code === 'auth/popup-closed-by-user' || message.includes('auth/popup-closed-by-user')) {
+    return 'Sign-in window was closed before completing Google authentication. Click Continue with Google to retry.';
+  }
+
+  if (code === 'auth/network-request-failed' || message.includes('auth/network-request-failed')) {
+    return 'Network error while reaching Google Sign-In. Check your internet connection and try again.';
+  }
+
+  return message || 'Unable to complete Google sign-in.';
+}
